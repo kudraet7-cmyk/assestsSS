@@ -43,13 +43,34 @@ sandbox.AudioContext = function () {
 };
 
 vm.createContext(sandbox);
-for (const f of ['core.js', 'world.js', 'actors.js', 'render.js', 'main.js']) {
+for (const f of ['core.js', 'sprites.js', 'world.js', 'actors.js', 'render.js', 'main.js', 'touch.js']) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8');
   vm.runInContext(src, sandbox, { filename: f });
 }
 
 const G = sandbox.G;
 const SK = vm.runInContext("SKILLS", sandbox);
+
+// sprite-matrix integrity: every row of every matrix must share one width,
+// and every non-null cell must be a #rrggbb hex code
+const MATS = vm.runInContext(
+  '({HERO_BODY:HERO_BODY,LEGS_A:LEGS_A,LEGS_B:LEGS_B,SHIELD_FRONT:SHIELD_FRONT,SHIELD_BACK:SHIELD_BACK,' +
+  'SPEAR_V:SPEAR_V,SPEAR_H:SPEAR_H,SWORD_UP:SWORD_UP,SWORD_MID:SWORD_MID,SWORD_DOWN:SWORD_DOWN,' +
+  'NUMBERLESS:NUMBERLESS,LICKER:LICKER,BITER:BITER,TILE_GRASS:TILE_GRASS,TILE_IRON:TILE_IRON,' +
+  'TILE_BRASS:TILE_BRASS,RUIN_SHAFT:RUIN_SHAFT,RUIN_CAP:RUIN_CAP,BRAZIER:BRAZIER,FLAME_A:FLAME_A,FLAME_B:FLAME_B})',
+  sandbox);
+for (const name in MATS) {
+  const m = MATS[name];
+  const w = m[0].length;
+  for (let r = 0; r < m.length; r++) {
+    if (m[r].length !== w) { console.error('FAIL: matrix ' + name + ' row ' + r + ' has width ' + m[r].length + ', expected ' + w); process.exit(1); }
+    for (let c = 0; c < w; c++) {
+      const cell = m[r][c];
+      if (cell !== null && !/^#[0-9a-f]{6}$/i.test(cell)) { console.error('FAIL: matrix ' + name + ' cell ' + r + ',' + c + ' is not a hex color: ' + cell); process.exit(1); }
+    }
+  }
+}
+console.log('ok: all ' + Object.keys(MATS).length + ' sprite/tile matrices are rectangular hex grids');
 const STEP = 1 / 60;
 let frames = 0;
 function run(n, keys, pressedOnce) {

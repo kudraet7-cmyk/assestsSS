@@ -86,7 +86,9 @@ function bootCanvas() {
   G.ctx = c.getContext('2d');
   G.ctx.imageSmoothingEnabled = false;
   const fit = function () {
-    const s = Math.max(1, Math.floor(Math.min(window.innerWidth / G.W, window.innerHeight / G.H)));
+    const m = Math.min(window.innerWidth / G.W, window.innerHeight / G.H);
+    // integer scale when there's room; fractional fill on small/tablet screens
+    const s = m >= 2 ? Math.floor(m) : Math.max(0.6, m);
     c.style.width = (G.W * s) + 'px';
     c.style.height = (G.H * s) + 'px';
   };
@@ -179,6 +181,312 @@ G.sfx = {
   petrify: function () { tone(900, 0.5, 'sawtooth', 0.07, -700); noiseBurst(0.4, 0.1, 1100); },
   wave: function () { tone(98, 0.5, 'sawtooth', 0.1, 20); tone(110, 0.6, 'sawtooth', 0.08, -20); },
 };
+
+// ============================================================
+// SOURCE: js/sprites.js
+// ============================================================
+// ============================================================
+// ISKANDER — sprite data: every sprite and tile is a hardcoded
+// 2D array of hex color codes, rendered cell-by-cell with
+// fillRect as scaled pixel blocks. No images. No base64.
+// ============================================================
+// Palette legend (each constant IS a hex color code; rows below
+// read like the picture they draw):
+const _ = null;            // transparent
+const K  = '#16121d';      // ink / eye
+const G1 = '#8a5a18', G2 = '#c9912f', G3 = '#f3cf6b'; // gold ramp
+const HG = '#f0c468';      // ram horns (own hex so they can be hidden pre-Siwa)
+const B1 = '#5b3a1e', B2 = '#9c6b30', B3 = '#d9a85a'; // bronze ramp
+const SKN = '#e0a878', S2 = '#a8704c', HR = '#4a2f1b'; // skin / shade / hair
+const CL = '#d8b56f', C2 = '#a5854a', TU = '#f4ead2';  // cloak / shade / tunic
+const WD = '#6b4a2a', TP = '#e8e3d0', BL = '#dfe3e8';  // wood / spear tip / blade
+const VD = '#2a2433', V2 = '#1c222c', TE = '#3a4a3d';  // void-flesh / dark / sick green
+const GR = '#39ff6a', MG = '#b03cff', RD = '#ff3963';  // corruption indices
+const IR = '#3a3f46', I2 = '#6a7079', I3 = '#8a93a0';  // iron ramp
+const MB = '#e8e0cc', M2 = '#c8c0ac', M3 = '#b8b09c';  // marble ramp
+const GA = '#c8a34e', GB = '#a8853f';                  // grass
+const EA = '#8a5a33', EB = '#6b4426', SP = '#9c7b45';  // earth / deep / speckle
+const F1 = '#f3a33c', F2 = '#f6e3a8';                  // flame
+
+// ---------- ALEXANDER (16 wide) ----------
+// Head & horned helmet (rows 0-6), cuirass & cloak (7-12), pteruges (13-15)
+const HERO_BODY = [
+  [_,  _,  _,  _,  _,  _,  _,  G2, G3, G3, G2, _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  HG, _,  G2, G3, G2, G2, G3, G2, _,  HG, _,  _ ],
+  [_,  _,  _,  HG, HG, G2, G2, G2, G2, G2, G2, G2, HG, HG, _,  _ ],
+  [_,  _,  _,  HG, _,  G1, G2, SKN,SKN,SKN,SKN,G2, _,  HG, _,  _ ],
+  [_,  _,  _,  _,  _,  HR, SKN,SKN,SKN,K,  SKN,G1, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  HR, S2, SKN,SKN,SKN,S2, _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  _,  S2, SKN,SKN,S2, _,  _,  _,  _,  _,  _ ],
+  [_,  CL, CL, _,  G1, G2, G2, G2, G2, G2, G2, G1, SKN,_,  _,  _ ],
+  [_,  CL, C2, _,  G1, G2, G3, G3, G3, G2, G1, SKN,SKN,_,  _,  _ ],
+  [_,  CL, C2, _,  G1, G2, G3, G3, G3, G2, G1, _,  SKN,_,  _,  _ ],
+  [_,  CL, C2, _,  G1, G2, G2, G3, G2, G2, G1, _,  _,  _,  _,  _ ],
+  [_,  CL, C2, _,  _,  G1, G2, G2, G2, G1, _,  _,  _,  _,  _,  _ ],
+  [_,  CL, C2, _,  _,  B1, B1, B1, B1, B1, _,  _,  _,  _,  _,  _ ],
+  [_,  CL, C2, _,  TU, C2, TU, C2, TU, C2, _,  _,  _,  _,  _,  _ ],
+  [_,  CL, C2, _,  TU, C2, TU, C2, TU, C2, _,  _,  _,  _,  _,  _ ],
+  [_,  CL, _,  _,  TU, C2, TU, C2, TU, C2, _,  _,  _,  _,  _,  _ ],
+];
+// Two leg frames: standing / striding (greaves, then skin, then sandals)
+const LEGS_A = [
+  [_,  CL, _,  _,  _,  G2, G2, _,  _,  G2, G2, _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  G2, G2, _,  _,  G2, G2, _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  S2, SKN,_,  _,  S2, SKN,_,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  S2, SKN,_,  _,  S2, SKN,_,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  S2, SKN,_,  _,  S2, SKN,_,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  B1, B1, B1, _,  _,  B1, B1, B1, _,  _,  _,  _ ],
+];
+const LEGS_B = [
+  [_,  CL, _,  _,  _,  G2, G2, _,  _,  G2, G2, _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  G2, G2, _,  _,  _,  _,  G2, G2, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  S2, SKN,_,  _,  _,  _,  _,  S2, SKN,_,  _,  _ ],
+  [_,  _,  _,  S2, SKN,_,  _,  _,  _,  _,  _,  _,  S2, SKN,_,  _ ],
+  [_,  _,  _,  S2, _,  _,  _,  _,  _,  _,  _,  _,  _,  SKN,_,  _ ],
+  [_,  _,  B1, B1, _,  _,  _,  _,  _,  _,  _,  _,  B1, B1, B1, _ ],
+];
+// The lion-embossed shield, full face (blocking) and slung profile
+const SHIELD_FRONT = [
+  [_,  B1, B1, B1, B1, B1, _ ],
+  [B1, B2, B2, B2, B2, B2, B1],
+  [B1, B2, B3, B3, B3, B2, B1],
+  [B1, B2, G3, G2, G3, B2, B1],
+  [B1, B2, G3, G3, G3, B2, B1],
+  [B1, B2, G2, G3, G2, B2, B1],
+  [B1, B2, B3, G2, B3, B2, B1],
+  [B1, B2, B2, B2, B2, B2, B1],
+  [_,  B1, B2, B2, B2, B1, _ ],
+  [_,  _,  B1, B1, B1, _,  _ ],
+];
+const SHIELD_BACK = [
+  [_,  B1, B1, B1, _ ],
+  [B1, B2, B2, B2, B1],
+  [B1, B2, G3, B2, B1],
+  [B1, B2, G3, B2, B1],
+  [B1, B2, B2, B2, B1],
+  [_,  B1, B1, B1, _ ],
+];
+// Weapons (stamped as overlays on the hero)
+const SPEAR_V = [[TP], [TP], [TP]].concat(new Array(23).fill([WD]));
+const SPEAR_H = [
+  new Array(23).fill(WD).concat([TP, TP, TP]),
+  new Array(23).fill(_).concat([TP, _, _]),
+];
+const SWORD_UP = [
+  [_, BL, BL], [_, BL, BL], [_, BL, BL], [_, BL, BL],
+  [_, BL, BL], [_, BL, BL], [_, BL, BL],
+  [G2, G2, G2], [_, G1, _], [_, G1, _],
+];
+const SWORD_MID = [
+  [_,  _,  G2, BL, BL, BL, BL, BL, BL, BL, BL, TP],
+  [G1, G2, G2, BL, BL, BL, BL, BL, BL, BL, BL, BL],
+  [_,  _,  G2, _,  _,  _,  _,  _,  _,  _,  _,  _ ],
+];
+const SWORD_DOWN = [
+  [G2, BL, _,  _,  _,  _,  _,  _,  _,  _,  _ ],
+  [G2, BL, BL, BL, _,  _,  _,  _,  _,  _,  _ ],
+  [_,  _,  _,  BL, BL, BL, BL, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  _,  _,  BL, BL, BL, TP, _ ],
+];
+
+// ---------- THE HORDE (wrong pixels wearing almost-bodies) ----------
+const NUMBERLESS = [
+  [_,  _,  V2, V2, V2, _,  _,  _ ],
+  [_,  V2, VD, VD, VD, V2, _,  _ ],
+  [V2, VD, GR, VD, VD, VD, V2, _ ],
+  [V2, VD, VD, VD, RD, VD, V2, _ ],
+  [V2, VD, VD, MG, VD, VD, V2, _ ],
+  [_,  V2, VD, VD, VD, V2, _,  _ ],
+  [_,  V2, _,  V2, _,  V2, _,  _ ],
+  [V2, _,  _,  V2, _,  _,  V2, _ ],
+];
+// Licker of the River: segmented humps, head & tongue at the right
+const LICKER = [
+  [_,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  V2, V2, _,  _ ],
+  [_,  _,  _,  V2, V2, _,  _,  _,  V2, V2, _,  _,  _,  _,  _,  V2, TE, TE, V2, _ ],
+  [_,  _,  V2, TE, TE, V2, _,  V2, TE, TE, V2, _,  _,  _,  V2, TE, VD, VD, TE, V2],
+  [_,  V2, TE, VD, VD, TE, V2, TE, VD, VD, TE, V2, _,  V2, TE, VD, GR, VD, VD, V2],
+  [V2, TE, VD, MG, VD, VD, TE, VD, VD, MG, VD, TE, V2, TE, VD, VD, VD, VD, RD, RD],
+  [V2, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, TE, VD, VD, VD, TP, RD, _,  _ ],
+  [_,  V2, V2, VD, V2, V2, VD, V2, V2, VD, V2, V2, V2, VD, VD, V2, _,  _,  _,  _ ],
+  [_,  _,  _,  V2, _,  _,  V2, _,  _,  V2, _,  _,  _,  V2, V2, _,  _,  _,  _,  _ ],
+];
+// Wall-Biter: riveted iron dome, void belly, shearing mandibles
+const BITER = [
+  [_,  _,  _,  _,  _,  _,  I2, I2, I2, I2, I2, I2, I2, _,  _,  _,  _,  _,  _,  _ ],
+  [_,  _,  _,  _,  I2, IR, IR, IR, IR, IR, IR, IR, IR, I2, _,  _,  _,  _,  _,  _ ],
+  [_,  _,  _,  I2, IR, I3, IR, IR, I3, IR, IR, IR, I3, IR, I2, _,  _,  _,  _,  _ ],
+  [_,  _,  I2, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, I2, _,  _,  _,  _ ],
+  [_,  I2, IR, IR, I3, IR, IR, I3, IR, IR, I3, IR, IR, IR, IR, IR, I2, _,  _,  _ ],
+  [_,  I2, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, RD, _,  TP, _ ],
+  [I2, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, VD, TP, TP, TP],
+  [I2, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, IR, VD, VD, _,  TP, _ ],
+  [_,  VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, VD, _,  TP, TP, _ ],
+  [_,  VD, V2, VD, VD, V2, VD, VD, V2, VD, VD, V2, VD, VD, V2, VD, _,  _,  _,  _ ],
+  [_,  V2, _,  V2, _,  _,  V2, _,  _,  V2, _,  _,  V2, _,  _,  V2, _,  _,  _,  _ ],
+  [V2, V2, _,  V2, V2, _,  V2, V2, _,  V2, V2, _,  V2, V2, _,  V2, V2, _,  _,  _ ],
+];
+// Echo-Born and the False Iskander reuse the hero matrices through this remap:
+const CORRUPT_MAP = {};
+CORRUPT_MAP[G1] = '#16121d'; CORRUPT_MAP[G2] = '#1c222c'; CORRUPT_MAP[G3] = GR;
+CORRUPT_MAP[HG] = GR;        CORRUPT_MAP[SKN] = '#7a8a7d'; CORRUPT_MAP[S2] = '#566057';
+CORRUPT_MAP[HR] = '#1c222c'; CORRUPT_MAP[CL] = '#3a2f4a';  CORRUPT_MAP[C2] = '#241d30';
+CORRUPT_MAP[TU] = '#566057'; CORRUPT_MAP[B1] = '#1c222c';  CORRUPT_MAP[B2] = '#2a2433';
+CORRUPT_MAP[B3] = '#16121d'; CORRUPT_MAP[WD] = '#2a2433';  CORRUPT_MAP[TP] = GR;
+CORRUPT_MAP[BL] = MG;        CORRUPT_MAP[K] = RD;
+
+// ---------- ENVIRONMENT TILES ----------
+// Surface terrain (16x16): grass over earth over deep earth
+const TILE_GRASS = [
+  [GA, GA, GB, GA, GA, GA, GB, GA, GA, GB, GA, GA, GA, GB, GA, GA],
+  [GB, GA, GA, GB, GA, GB, GA, GA, GB, GA, GA, GB, GA, GA, GB, GA],
+  [EA, GB, EA, EA, GB, EA, EA, GB, EA, EA, GB, EA, EA, GB, EA, EA],
+  [EA, EA, EA, SP, EA, EA, EA, EA, SP, EA, EA, EA, EA, EA, SP, EA],
+  [EA, SP, EA, EA, EA, EA, SP, EA, EA, EA, EA, SP, EA, EA, EA, EA],
+  [EA, EA, EA, EA, SP, EA, EA, EA, EA, SP, EA, EA, EA, SP, EA, EA],
+  [EA, EA, SP, EA, EA, EA, EA, EA, SP, EA, EA, EA, EA, EA, EA, SP],
+  [EA, EA, EA, EA, EA, SP, EA, EA, EA, EA, EA, SP, EA, EA, EA, EA],
+  [EB, EA, EA, EB, EA, EA, EA, EB, EA, EA, EB, EA, EA, EA, EB, EA],
+  [EB, EB, EA, EB, EB, EB, EA, EB, EB, EB, EB, EA, EB, EB, EB, EB],
+  [EB, EB, EB, EB, EA, EB, EB, EB, EB, EA, EB, EB, EB, EB, EA, EB],
+  [EB, EA, EB, EB, EB, EB, EB, EA, EB, EB, EB, EB, EB, EB, EB, EB],
+  [EB, EB, EB, EA, EB, EB, EB, EB, EB, EB, EA, EB, EB, EB, EB, EB],
+  [EB, EB, EB, EB, EB, EA, EB, EB, EB, EB, EB, EB, EA, EB, EB, EB],
+  [EB, EB, EA, EB, EB, EB, EB, EB, EA, EB, EB, EB, EB, EB, EB, EA],
+  [EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB, EB],
+];
+// Per-act recolor ramps for terrain: [Act I, Act II, Act III]
+const ACT_RAMPS = {};
+ACT_RAMPS[GA] = [GA, '#9c8648', '#dfe8ef'];
+ACT_RAMPS[GB] = [GB, '#857338', '#c4d2dd'];
+ACT_RAMPS[EA] = [EA, '#74543a', '#5d6573'];
+ACT_RAMPS[EB] = [EB, '#594031', '#454c59'];
+ACT_RAMPS[SP] = [SP, '#86703f', '#77818f'];
+
+// The Wall (13x8, two tiles per segment): iron courses, then brass-sealed
+const TILE_IRON = [
+  [I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2],
+  [IR, IR, IR, IR, I2, IR, IR, IR, IR, IR, I2, IR, IR],
+  [IR, I3, IR, IR, I2, IR, IR, I3, IR, IR, I2, IR, IR],
+  [IR, IR, IR, IR, I2, IR, IR, IR, IR, IR, I2, IR, I3],
+  [I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2, I2],
+  [IR, IR, I2, IR, IR, IR, IR, I2, IR, IR, IR, I3, IR],
+  [I3, IR, I2, IR, I3, IR, IR, I2, IR, IR, IR, IR, IR],
+  [IR, IR, I2, IR, IR, IR, IR, I2, IR, I3, IR, IR, IR],
+];
+const TILE_BRASS = [
+  [B3, I2, I2, I2, B3, I2, I2, I2, I2, B3, I2, I2, B3],
+  [IR, IR, IR, IR, B3, IR, IR, IR, IR, B3, IR, IR, IR],
+  [IR, I3, IR, IR, B3, IR, IR, G3, IR, B3, IR, IR, IR],
+  [IR, IR, IR, IR, B2, IR, IR, IR, IR, B2, IR, I3, IR],
+  [B3, B3, B3, B3, B3, B3, B3, B3, B3, B3, B3, B3, B3],
+  [IR, IR, I2, IR, B3, IR, IR, I2, IR, B3, IR, IR, IR],
+  [I3, IR, I2, IR, B2, IR, IR, I2, IR, B3, IR, G3, IR],
+  [IR, IR, I2, IR, B3, IR, IR, I2, IR, B3, IR, IR, IR],
+];
+// Hellenic ruins: fluted column drum (stackable) and capital
+const RUIN_SHAFT = [
+  [M2, MB, MB, M2, MB, MB, M2, MB],
+  [M2, MB, MB, M2, MB, MB, M2, MB],
+  [M2, MB, MB, M2, M3, MB, M2, MB],
+  [M2, MB, MB, M2, MB, MB, M2, MB],
+  [M2, M3, MB, M2, MB, MB, M2, MB],
+  [M2, MB, MB, M2, MB, M3, M2, MB],
+  [M2, MB, MB, M2, MB, MB, M2, MB],
+  [M3, M3, M3, M3, M3, M3, M3, M3],
+];
+const RUIN_CAP = [
+  [MB, MB, MB, MB, MB, MB, MB, MB, MB, MB, MB, MB],
+  [M2, MB, MB, MB, M2, MB, MB, M2, MB, MB, MB, M2],
+  [_,  M3, M2, M2, M2, M2, M2, M2, M2, M2, M3, _ ],
+  [_,  _,  M3, M3, M3, M3, M3, M3, M3, M3, _,  _ ],
+];
+const BRAZIER = [
+  [I2, I3, I2, I2, I2, I2, I2, I3, I2],
+  [_,  IR, IR, IR, IR, IR, IR, IR, _ ],
+  [_,  _,  IR, IR, IR, IR, IR, _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  _,  IR, _,  _,  _,  _ ],
+  [_,  _,  _,  IR, IR, IR, _,  _,  _ ],
+  [_,  _,  IR, IR, IR, IR, IR, _,  _ ],
+  [_,  I2, I2, I2, I2, I2, I2, I2, _ ],
+];
+const FLAME_A = [
+  [_,  _,  _,  F2, _,  _,  _ ],
+  [_,  _,  F1, F2, F1, _,  _ ],
+  [_,  F1, F1, F2, F1, F1, _ ],
+  [_,  F1, F2, F2, F2, F1, _ ],
+  [F1, F1, F2, F2, F2, F1, F1],
+  [_,  F1, F1, F1, F1, F1, _ ],
+];
+const FLAME_B = [
+  [_,  _,  _,  _,  F2, _,  _ ],
+  [_,  _,  F1, F2, F1, _,  _ ],
+  [_,  F1, F2, F1, F2, F1, _ ],
+  [F1, F1, F2, F2, F1, F1, _ ],
+  [_,  F1, F2, F2, F2, F1, F1],
+  [_,  F1, F1, F1, F1, F1, _ ],
+];
+
+// ---------- renderer ----------
+// Draws a color matrix with fillRect, one scaled block per cell.
+// opts: scale, flip, remap {hex:hex|null}, mono, glitch, actT
+function actShade(hex, t) {
+  const r = ACT_RAMPS[hex];
+  if (!r) return hex;
+  const a = Math.floor(clamp(t, 0, 1.999)), b = Math.ceil(clamp(t, 0.001, 2));
+  return mixc(r[a], r[b], t - a);
+}
+function drawSprite(mat, x, y, o) {
+  o = o || {};
+  const ctx = G.ctx;
+  const s = o.scale || 1;
+  const w = mat[0].length;
+  x = Math.round(x); y = Math.round(y);
+  for (let r = 0; r < mat.length; r++) {
+    const row = mat[r];
+    let jx = 0;
+    if (o.glitch && Math.random() < 0.15) jx = ((Math.random() * 3) | 0) - 1;
+    for (let c = 0; c < row.length; c++) {
+      let col = row[c];
+      if (col == null) continue;
+      if (o.remap && o.remap.hasOwnProperty(col)) {
+        col = o.remap[col];
+        if (col == null) continue;
+      }
+      if (o.actT != null) col = actShade(col, o.actT);
+      if (o.mono) col = o.mono;
+      else if (o.glitch && Math.random() < 0.05) col = Math.random() < 0.5 ? GR : MG;
+      const cx = o.flip ? (w - 1 - c) : c;
+      ctx.fillStyle = col;
+      ctx.fillRect(x + (cx + jx) * s, y + r * s, s, s);
+    }
+  }
+}
+// Offscreen tile cache (falls back to direct drawing headless)
+const _tileCache = new Map();
+function drawTile(mat, x, y, actT) {
+  const canDoc = typeof document !== 'undefined' && typeof document.createElement === 'function';
+  if (!canDoc) { drawSprite(mat, x, y, actT != null ? { actT: actT } : null); return; }
+  const q = actT != null ? Math.round(actT * 8) : -1;
+  let byQ = _tileCache.get(mat);
+  if (!byQ) { byQ = {}; _tileCache.set(mat, byQ); }
+  let cv = byQ[q];
+  if (!cv) {
+    cv = document.createElement('canvas');
+    cv.width = mat[0].length; cv.height = mat.length;
+    const main = G.ctx;
+    G.ctx = cv.getContext('2d');
+    drawSprite(mat, 0, 0, q >= 0 ? { actT: q / 8 } : null);
+    G.ctx = main;
+    byQ[q] = cv;
+  }
+  G.ctx.drawImage(cv, Math.round(x), Math.round(y));
+}
 
 // ============================================================
 // SOURCE: js/world.js
@@ -1398,155 +1706,57 @@ function FR(x, y, w, h, c) {
   G.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
-const HPAL = {
-  helm1: '#8a5a18', helm2: '#c9912f', helm3: '#f3cf6b',
-  skin: '#e0a878', skin2: '#a8704c', hair: '#4a2f1b',
-  cuir: '#c9912f', cuirHi: '#f3cf6b', cuirSh: '#8a5a18',
-  cloak: '#d8b56f', cloak2: '#a5854a', tunic: '#f4ead2',
-  sh1: '#5b3a1e', sh2: '#9c6b30', lion: '#f3cf6b',
-  spear: '#6b4a2a', tip: '#e8e3d0', blade: '#dfe3e8', greave: '#c9912f',
-};
-const GPAL = {
-  helm1: '#101318', helm2: '#1c222c', helm3: '#39ff6a',
-  skin: '#7a8a7d', skin2: '#566057', hair: '#1c222c',
-  cuir: '#2a2433', cuirHi: '#b03cff', cuirSh: '#16121d',
-  cloak: '#3a2f4a', cloak2: '#241d30', tunic: '#566057',
-  sh1: '#1c222c', sh2: '#2a2433', lion: '#ff3963',
-  spear: '#2a2433', tip: '#39ff6a', blade: '#b03cff', greave: '#2a2433',
-};
-
-// the hero (and everything that mimics him)
-function drawHero(p, opts) {
-  opts = opts || {};
-  const ctx = G.ctx;
-  const pal = Object.assign({}, opts.pal || HPAL);
-  if (!opts.pal && G.age > 0) pal.hair = mixc('#4a2f1b', '#cfcfcf', clamp(G.age / 8, 0, 1));
-  const glitch = opts.glitch;
-  const horns = opts.horns != null ? opts.horns : G.flags.shrine;
-  ctx.save();
-  ctx.translate(Math.round(p.x + p.w / 2), Math.round(p.y));
-  ctx.scale(p.face || 1, 1);
-  if (opts.scale) ctx.scale(opts.scale, opts.scale);
-  function R2(x, y, w, h, c) {
-    if (glitch && Math.random() < 0.18) {
-      x += Math.floor(Math.random() * 3) - 1;
-      if (Math.random() < 0.3) c = Math.random() < 0.5 ? '#39ff6a' : '#b03cff';
-    }
-    ctx.fillStyle = c;
-    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+// the hero (and everything that mimics him) — composed from pixel matrices
+function drawHero(p, o) {
+  o = o || {};
+  const face = p.face || 1;
+  const sc = o.scale || 1;
+  const X = Math.round(p.x) - 3, Y = Math.round(p.y);
+  const remap = {};
+  if (o.corrupt) Object.assign(remap, CORRUPT_MAP);
+  else if (G.age > 0) remap[HR] = mixc(HR, '#cfcfcf', clamp(G.age / 8, 0, 1));
+  const horns = o.horns != null ? o.horns : G.flags.shrine;
+  if (!horns) remap[HG] = null;        // the ram horns are earned at Siwa
+  const so = { flip: face === -1, remap: remap, glitch: o.glitch, mono: o.mono, scale: sc };
+  function st(mat, ox, oy) {
+    const sx = face === 1 ? ox : 16 - ox - mat[0].length;
+    drawSprite(mat, X + sx * sc, Y + oy * sc, so);
   }
   const atk = p.atk || null;
   const moving = Math.abs(p.vx || 0) > 5;
-  const legA = moving ? Math.round(Math.sin(p.runPhase || 0) * 2) : 0;
-
-  // cloak (ochre, flutters when moving)
-  const fl = moving ? Math.round(Math.sin((G.time || 0) * 9) * 1.5) : 0;
-  R2(-8, 4, 3, 14 + fl, pal.cloak);
-  R2(-7, 4, 2, 12, pal.cloak2);
-
-  // back arm shield (front when blocking)
-  if (!p.block && atk == null) {
-    R2(-7, 7, 6, 6, pal.sh2);
-    R2(-6, 8, 4, 4, pal.sh1);
-    R2(-5, 9, 2, 2, pal.lion);
-  }
-
-  // legs + greaves + sandals
-  R2(-3 + legA, 16, 2, 5, pal.skin2);
-  R2(2 - legA, 16, 2, 5, pal.skin);
-  R2(-3 + legA, 16, 2, 2, pal.greave);
-  R2(2 - legA, 16, 2, 2, pal.greave);
-  R2(-3 + legA, 21, 3, 1, pal.sh1);
-  R2(2 - legA, 21, 3, 1, pal.sh1);
-
-  // pteruges skirt
-  for (let i = 0; i < 4; i++) R2(-4 + i * 2, 12, 2, 4, i % 2 ? pal.tunic : pal.cloak2);
-
-  // cuirass
-  R2(-4, 6, 9, 6, pal.cuir);
-  R2(-1, 6, 2, 6, pal.cuirHi);
-  R2(-4, 6, 1, 6, pal.cuirSh);
-  R2(-4, 11, 9, 1, pal.sh1);
-
-  // head + helmet
-  R2(-2, 1, 6, 5, pal.skin);
-  R2(-2, 1, 2, 5, pal.hair);
-  R2(-3, -1, 8, 3, pal.helm2);
-  R2(-3, 2, 2, 3, pal.helm2);
-  R2(3, 2, 2, 2, pal.helm1);
-  R2(-3, -1, 8, 1, pal.helm3);
-  if (horns) {
-    R2(4, -2, 2, 2, pal.helm3); R2(5, -4, 2, 2, pal.helm2); R2(4, -5, 2, 1, pal.helm3);
-    R2(-4, -2, 2, 2, pal.helm2); R2(-5, -4, 2, 2, pal.helm1);
-  }
-
-  // weapons
-  if (atk && atk.kind === 'spear') {
-    R2(2, 8, 24, 1, pal.spear); R2(26, 7, 3, 3, pal.tip);
-  } else if (atk && atk.kind === 'lunge') {
-    R2(2, 8, 28, 2, pal.spear); R2(30, 7, 4, 4, pal.tip);
-  } else if (atk && atk.kind === 'sword') {
-    if (atk.idx === 0) { R2(5, -4, 2, 10, pal.blade); R2(4, 5, 4, 2, pal.helm2); }
-    else if (atk.idx === 1) { R2(6, 7, 12, 2, pal.blade); R2(5, 6, 2, 4, pal.helm2); }
-    else { R2(6, 12, 11, 2, pal.blade); R2(5, 10, 2, 4, pal.helm2); }
-  } else if (atk && atk.kind === 'bash') {
-    // shield thrust
+  const stride = moving && Math.sin(p.runPhase || 0) > 0;
+  if (!p.block && !(atk && atk.kind === 'bash')) st(SHIELD_BACK, 0, 7);
+  st(HERO_BODY, 0, 0);
+  st(stride ? LEGS_B : LEGS_A, 0, 16);
+  if (atk && (atk.kind === 'spear' || atk.kind === 'lunge')) st(SPEAR_H, 11, 7);
+  else if (atk && atk.kind === 'sword') {
+    if (atk.idx === 0) st(SWORD_UP, 12, -4);
+    else if (atk.idx === 1) st(SWORD_MID, 12, 6);
+    else st(SWORD_DOWN, 12, 11);
   } else if (p.charge > 0) {
-    R2(-12, 6, 8, 1, pal.helm3); R2(-14, 9, 6, 1, pal.helm3);
-  } else {
-    R2(6, -6, 1, 24, pal.spear); R2(5, -9, 3, 3, pal.tip);
-  }
-
-  // shield front (block / bash)
-  if (p.block || (atk && atk.kind === 'bash')) {
-    const sx2 = atk && atk.kind === 'bash' ? 7 : 5;
-    R2(sx2, 5, 7, 11, pal.sh2);
-    R2(sx2 + 1, 6, 5, 9, pal.sh1);
-    R2(sx2 + 2, 9, 3, 3, pal.lion);
-    R2(sx2 + 3, 8, 1, 1, pal.sh1);
-  }
-
+    FR(X + (face === 1 ? -8 : 20), Y + 6, 6, 1, '#f3cf6b');
+    FR(X + (face === 1 ? -10 : 22), Y + 10, 6, 1, '#f3cf6b');
+  } else if (!p.block) st(SPEAR_V, 13, -5);
+  if (p.block || (atk && atk.kind === 'bash')) st(SHIELD_FRONT, atk ? 11 : 9, 5);
   // Tier-2 divinity shimmer
-  if (horns && !glitch && Math.random() < 0.12) {
-    R2(-5 + Math.floor(Math.random() * 11), -3 + Math.floor(Math.random() * 22), 1, 1, '#f3cf6b');
+  if (horns && !o.corrupt && Math.random() < 0.12) {
+    FR(X + Math.floor(Math.random() * 16), Y + Math.floor(Math.random() * 22), 1, 1, '#f3cf6b');
   }
-  ctx.restore();
 }
 
 function drawEnemy(e) {
-  const t = G.time;
-  const gl = e.petrified > 0 ? 0 : 1;
-  function gc(c) {
-    if (e.petrified > 0) return '#8a93a0';
-    return (gl && Math.random() < 0.15) ? (Math.random() < 0.5 ? '#39ff6a' : '#b03cff') : c;
-  }
-  const jx = e.petrified > 0 ? 0 : (Math.random() < 0.3 ? Math.floor(Math.random() * 3) - 1 : 0);
+  const pet = e.petrified > 0;
+  const mono = pet ? '#8a93a0' : null;
   if (e.type === 'numberless') {
-    FR(e.x + jx, e.y, 6, 6, gc('#2a2433'));
-    FR(e.x + 1 + jx, e.y + 1, 2, 2, gc('#39ff6a'));
-    FR(e.x + 4, e.y + 2, 1, 1, gc('#ff3963'));
+    drawSprite(NUMBERLESS, e.x - 1, e.y - 2, { glitch: !pet, mono: mono });
   } else if (e.type === 'licker') {
-    for (let i = 0; i < 4; i++) {
-      const sy = Math.sin(t * 8 + i * 1.2 + e.seed) * 2;
-      FR(e.x + i * 4 + jx, e.y + 3 + sy, 4, 4, gc(i === 0 ? '#3a4a3d' : '#2a2433'));
-    }
-    FR(e.x + (e.facing === -1 ? 0 : 12) + jx, e.y + 2, 2, 2, gc('#39ff6a'));
-    FR(e.x + (e.facing === -1 ? -2 : 16), e.y + 5, 2, 1, gc('#b03cff'));
+    const bob = pet ? 0 : Math.round(Math.sin(G.time * 8 + e.seed));
+    drawSprite(LICKER, e.x - 2, e.y + bob, { glitch: !pet, mono: mono, flip: e.facing === -1 });
   } else if (e.type === 'biter') {
-    FR(e.x + jx, e.y, 18, 9, gc('#3a3f46'));
-    FR(e.x + 2, e.y + 2, 14, 5, gc('#2a2433'));
-    for (let i = 0; i < 3; i++) FR(e.x + 3 + i * 5, e.y + 1, 2, 1, gc('#6a7079'));
-    FR(e.x, e.y + 9, 4, 3, gc('#2a2433'));
-    FR(e.x + 14, e.y + 9, 4, 3, gc('#2a2433'));
-    const mo = Math.floor(t * 14) % 2;
-    const mx = e.facing === -1 ? e.x - 3 : e.x + 18;
-    FR(mx, e.y + 2 + mo, 3, 2, gc('#dfe3e8'));
-    FR(mx, e.y + 6 - mo, 3, 2, gc('#dfe3e8'));
-    FR(e.x + (e.facing === -1 ? 2 : 14), e.y + 3, 2, 2, gc('#ff3963'));
+    drawSprite(BITER, e.x - 1, e.y, { glitch: !pet, mono: mono, flip: e.facing === -1 });
   } else if (e.type === 'echoborn') {
-    drawHero({ x: e.x, y: e.y, w: e.w, h: e.h, face: e.facing, vx: e.vx, runPhase: t * 10, block: false, atk: null, charge: 0 },
-      { pal: GPAL, glitch: e.petrified <= 0, horns: true });
-    if (e.petrified > 0) { G.ctx.globalAlpha = 0.75; FR(e.x - 2, e.y - 4, 14, 28, '#8a93a0'); G.ctx.globalAlpha = 1; }
+    drawHero({ x: e.x, y: e.y, w: e.w, h: e.h, face: e.facing, vx: e.vx, runPhase: G.time * 10, block: false, atk: null, charge: 0 },
+      { corrupt: true, glitch: !pet, mono: mono, horns: true });
   }
 }
 
@@ -1590,7 +1800,7 @@ function drawBoss() {
     }
   } else if (b.phase === 3) {
     drawHero({ x: b.x, y: b.y, w: 10, h: 22, face: G.player.x < b.x ? -1 : 1, vx: b.vx, runPhase: t * 10, block: b.parryCd <= 0, atk: null, charge: 0 },
-      { pal: GPAL, glitch: true, horns: true });
+      { corrupt: true, glitch: true, horns: true });
   }
 }
 
@@ -1733,14 +1943,8 @@ function drawTerrain(camX) {
     }
     const gy = G.world.ground[c];
     const shade = 0.92 + hash2(c, 3) * 0.16;
-    FR(x, gy, TS, 4, pal.grass);
-    FR(x, gy + 4, TS, G.H - gy, mixc(pal.ground, '#000000', 1 - shade + 0.04));
-    FR(x, gy + 26, TS, G.H - gy - 26, mixc(pal.dirt, '#000000', 1 - shade + 0.06));
-    // dither speckles
-    for (let s = 0; s < 3; s++) {
-      const hx = hash2(c * 7 + s, 5);
-      FR(x + Math.floor(hx * 14), gy + 6 + Math.floor(hash2(c, s + 9) * 30), 2, 2, mixc(pal.ground, pal.grass, 0.4));
-    }
+    drawTile(TILE_GRASS, x, gy, zoneT(x));
+    FR(x, gy + 16, TS, G.H - gy - 16, mixc(pal.dirt, '#000000', 1 - shade + 0.06));
   }
   // one-way platforms
   for (const p of G.world.plats) {
@@ -1765,13 +1969,13 @@ function drawDecos(camX) {
     if (gy > 900) continue;
     const pal = palAt(d.x);
     if (d.type === 'column') {
-      FR(d.x, gy - d.h, 8, d.h, '#e8e0cc');
-      FR(d.x + 1, gy - d.h, 2, d.h, '#fff8e8');
-      FR(d.x - 2, gy - d.h, 12, 3, '#e8e0cc');
-      FR(d.x - 2, gy - 3, 12, 3, '#d8d0bc');
+      const drums = Math.max(2, Math.round(d.h / 8));
+      for (let k2 = 1; k2 <= drums; k2++) drawTile(RUIN_SHAFT, d.x, gy - k2 * 8);
+      drawSprite(RUIN_CAP, d.x - 2, gy - drums * 8 - 4);
     } else if (d.type === 'brokencol') {
-      FR(d.x, gy - d.h, 8, d.h, '#ddd5c0');
-      FR(d.x - 1, gy - d.h, 10, 2, '#c8c0ac');
+      const drums = Math.max(1, Math.round(d.h / 8));
+      for (let k2 = 1; k2 <= drums; k2++) drawTile(RUIN_SHAFT, d.x, gy - k2 * 8);
+      FR(d.x, gy - drums * 8 - 2, 8, 2, '#c8c0ac');
     } else if (d.type === 'laurel') {
       FR(d.x + 3, gy - 6, 2, 6, '#6b4a2a');
       FR(d.x, gy - 12, 8, 7, '#7d9c48');
@@ -1820,9 +2024,7 @@ function drawLandmarks(camX) {
     FR(x - 20, gy - 14, 16, 14, '#94805f');
     FR(x - 16, gy - 18, 8, 5, '#b09a78');
     FR(x + 8, gy - 3, 12, 3, '#3d3328');
-    const f = Math.floor(G.time * 8) % 2;
-    FR(x + 11, gy - 8 + f, 6, 6 - f, '#f3a33c');
-    FR(x + 13, gy - 10 + f, 2, 3, '#f6e3a8');
+    drawSprite(Math.floor(G.time * 8) % 2 ? FLAME_A : FLAME_B, x + 10, gy - 9);
     FR(x - 2, gy - 26, 2, 26, '#6b4a2a');
     FR(x, gy - 26, 8, 5, '#c9912f');
     if (Math.abs(G.player.x - x) < 30 && G.player.hp < G.player.maxhp) drawPrompt(x, gy - 34, 'E: REST');
@@ -1831,11 +2033,8 @@ function drawLandmarks(camX) {
   for (const bx of w.braziers) {
     if (bx < camX - 30 || bx > camX + G.W + 30) continue;
     const gy = terrainY(bx, true);
-    FR(bx - 1, gy - 12, 3, 12, '#3a3f46');
-    FR(bx - 4, gy - 15, 9, 4, '#5b5f66');
-    const f = Math.floor(G.time * 9 + bx) % 2;
-    FR(bx - 3, gy - 21 + f, 7, 6 - f, '#f3a33c');
-    FR(bx - 1, gy - 23 + f, 3, 3, '#f6e3a8');
+    drawSprite(BRAZIER, bx - 4, gy - 12);
+    drawSprite(Math.floor(G.time * 9 + bx) % 2 ? FLAME_A : FLAME_B, bx - 3, gy - 17);
   }
   // cracked rocks
   for (const r of w.rocks) {
@@ -1890,23 +2089,15 @@ function drawWall(camX) {
       if (Math.abs(G.player.x - (s.x + s.w / 2)) < 22 && G.flags.reachedWall) drawPrompt(s.x + s.w / 2, s.base - 28, 'E: BUILD (IRON)');
     } else {
       const dmg = s.hp / s.maxhp;
-      // iron block courses
+      // iron / brass-sealed block courses, two tiles per row
+      const mat = s.stage === 2 ? TILE_BRASS : TILE_IRON;
       for (let row = 0; row < Math.ceil(h / 8); row++) {
-        const off = (row % 2) * 6;
-        FR(s.x, s.top + row * 8, s.w, 8, row % 2 ? '#3a3f46' : '#41464e');
-        FR(s.x + off + 3, s.top + row * 8 + 3, 2, 2, '#6a7079');
-        FR(s.x + off + 14, s.top + row * 8 + 5, 2, 2, '#565b63');
+        drawTile(mat, s.x, s.top + row * 8);
+        drawTile(mat, s.x + 13, s.top + row * 8);
       }
       // battlement
       for (let m2 = 0; m2 < 3; m2++) FR(s.x + 2 + m2 * 9, s.top - 5, 6, 5, '#3a3f46');
-      if (s.stage === 2) {
-        // brass seams + meander engraving: the Iron Verse made real
-        FR(s.x + 4, s.top, 2, h, '#d9a85a');
-        FR(s.x + s.w - 6, s.top, 2, h, '#d9a85a');
-        FR(s.x, s.top + 10, s.w, 2, '#d9a85a');
-        for (let mx = 0; mx < 3; mx++) FR(s.x + 4 + mx * 8, s.top + 16, 4, 2, '#c9912f');
-        if (Math.random() < 0.06) FR(s.x + Math.random() * s.w, s.top + Math.random() * h, 1, 1, '#f3cf6b');
-      }
+      if (s.stage === 2 && Math.random() < 0.06) FR(s.x + Math.random() * s.w, s.top + Math.random() * h, 1, 1, '#f3cf6b');
       if (s.weak) FR(s.x + s.w / 2 - 1, s.top + 8, 2, h - 16, '#1d2434');
       // damage cracks
       if (dmg < 0.7) {
@@ -2251,7 +2442,7 @@ function drawTitle() {
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], G.W / 2, 126 + i * 11);
   ctx.fillStyle = Math.floor(G.time * 2) % 2 ? '#f3cf6b' : '#8a5a18';
   ctx.font = '9px monospace';
-  ctx.fillText('PRESS ENTER', G.W / 2, 212);
+  ctx.fillText(G.touchMode ? 'TAP TO BEGIN — TOUCH PADS ENABLED' : 'PRESS ENTER', G.W / 2, 212);
   ctx.textAlign = 'left';
   drawMeander();
 }
@@ -2377,7 +2568,7 @@ function drawAll() {
   drawWall(camX);
   for (const ec of G.echoes) {
     ctx.globalAlpha = 0.65;
-    drawHero({ x: ec.x - 5, y: ec.y, w: 10, h: 20, face: 1, vx: 0, runPhase: 0, block: true, atk: null, charge: 0 }, { pal: HPAL, horns: false });
+    drawHero({ x: ec.x - 5, y: ec.y, w: 10, h: 20, face: 1, vx: 0, runPhase: 0, block: true, atk: null, charge: 0 }, { horns: false });
     ctx.globalAlpha = 1;
   }
   for (const o of G.orbs) {
@@ -2555,6 +2746,84 @@ if (typeof document !== 'undefined' && document.getElementById) {
   newGame();
   requestAnimationFrame(loop);
 }
+
+// ============================================================
+// SOURCE: js/touch.js
+// ============================================================
+// ============================================================
+// ISKANDER — touch controls (tablets / phones)
+// Creates a DOM overlay; inert on desktop and in headless tests.
+// ============================================================
+(function () {
+  if (typeof document === 'undefined' || !document.createElement) return;
+  const touch = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+  if (!touch) return;
+  G.touchMode = true;
+
+  const style = document.createElement('style');
+  style.textContent =
+    'body{touch-action:none;-webkit-user-select:none;user-select:none}' +
+    '.tbtn{position:fixed;z-index:10;display:flex;align-items:center;justify-content:center;' +
+    'border:2px solid rgba(243,207,107,.5);border-radius:14%;background:rgba(22,18,29,.45);' +
+    'color:#f3cf6b;font:bold 3.2vmin monospace;opacity:.6;-webkit-tap-highlight-color:transparent}' +
+    '.tbtn.held{background:rgba(201,145,47,.6);opacity:.9}';
+  document.head.appendChild(style);
+
+  // key, label, css position/size
+  const B = 'width:11vmin;height:11vmin;';
+  const S = 'width:8vmin;height:8vmin;';
+  const defs = [
+    ['left', '◀', B + 'left:3vmin;bottom:4vmin'],
+    ['right', '▶', B + 'left:16vmin;bottom:4vmin'],
+    ['down', '▼', B + 'left:9.5vmin;bottom:16vmin'],
+    ['jump', 'JUMP', B + 'right:3vmin;bottom:17vmin'],
+    ['sword', 'SWRD', B + 'right:3vmin;bottom:4vmin'],
+    ['spear', 'SPER', B + 'right:16vmin;bottom:4vmin'],
+    ['shield', 'SHLD', B + 'right:16vmin;bottom:17vmin'],
+    ['dash', 'DASH', B + 'right:29vmin;bottom:4vmin'],
+    ['use', 'E', B + 'right:29vmin;bottom:17vmin'],
+    ['menu', 'Q', S + 'right:3vmin;top:3vmin'],
+    ['enter', '⏎', S + 'right:13vmin;top:3vmin'],
+    ['garrison', 'G', S + 'right:23vmin;top:3vmin'],
+    ['s1', '1', S + 'left:3vmin;top:3vmin'],
+    ['s2', '2', S + 'left:12vmin;top:3vmin'],
+    ['s3', '3', S + 'left:21vmin;top:3vmin'],
+    ['s4', '4', S + 'left:30vmin;top:3vmin'],
+    ['s5', '5', S + 'left:39vmin;top:3vmin'],
+  ];
+  for (const d of defs) {
+    const el = document.createElement('div');
+    el.className = 'tbtn';
+    el.textContent = d[1];
+    el.style.cssText += d[2];
+    const k = d[0];
+    el.addEventListener('touchstart', function (e) {
+      e.preventDefault();
+      el.classList.add('held');
+      if (!G.keys[k]) G.pressed[k] = true;
+      G.keys[k] = true;
+      initAudio();
+    }, { passive: false });
+    const release = function (e) {
+      if (e) e.preventDefault();
+      el.classList.remove('held');
+      G.keys[k] = false;
+    };
+    el.addEventListener('touchend', release, { passive: false });
+    el.addEventListener('touchcancel', release, { passive: false });
+    document.body.appendChild(el);
+  }
+
+  // tapping the screen itself confirms (title / choice / endings)
+  G.canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    initAudio();
+    if (G.state === 'title' || G.state === 'choice') G.pressed.enter = true;
+    if (G.state === 'ending' || G.state === 'gameover') G.pressed.restart = true;
+  }, { passive: false });
+
+  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+})();
 
 </script>
 </body>

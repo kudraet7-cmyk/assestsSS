@@ -6,155 +6,57 @@ function FR(x, y, w, h, c) {
   G.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
-const HPAL = {
-  helm1: '#8a5a18', helm2: '#c9912f', helm3: '#f3cf6b',
-  skin: '#e0a878', skin2: '#a8704c', hair: '#4a2f1b',
-  cuir: '#c9912f', cuirHi: '#f3cf6b', cuirSh: '#8a5a18',
-  cloak: '#d8b56f', cloak2: '#a5854a', tunic: '#f4ead2',
-  sh1: '#5b3a1e', sh2: '#9c6b30', lion: '#f3cf6b',
-  spear: '#6b4a2a', tip: '#e8e3d0', blade: '#dfe3e8', greave: '#c9912f',
-};
-const GPAL = {
-  helm1: '#101318', helm2: '#1c222c', helm3: '#39ff6a',
-  skin: '#7a8a7d', skin2: '#566057', hair: '#1c222c',
-  cuir: '#2a2433', cuirHi: '#b03cff', cuirSh: '#16121d',
-  cloak: '#3a2f4a', cloak2: '#241d30', tunic: '#566057',
-  sh1: '#1c222c', sh2: '#2a2433', lion: '#ff3963',
-  spear: '#2a2433', tip: '#39ff6a', blade: '#b03cff', greave: '#2a2433',
-};
-
-// the hero (and everything that mimics him)
-function drawHero(p, opts) {
-  opts = opts || {};
-  const ctx = G.ctx;
-  const pal = Object.assign({}, opts.pal || HPAL);
-  if (!opts.pal && G.age > 0) pal.hair = mixc('#4a2f1b', '#cfcfcf', clamp(G.age / 8, 0, 1));
-  const glitch = opts.glitch;
-  const horns = opts.horns != null ? opts.horns : G.flags.shrine;
-  ctx.save();
-  ctx.translate(Math.round(p.x + p.w / 2), Math.round(p.y));
-  ctx.scale(p.face || 1, 1);
-  if (opts.scale) ctx.scale(opts.scale, opts.scale);
-  function R2(x, y, w, h, c) {
-    if (glitch && Math.random() < 0.18) {
-      x += Math.floor(Math.random() * 3) - 1;
-      if (Math.random() < 0.3) c = Math.random() < 0.5 ? '#39ff6a' : '#b03cff';
-    }
-    ctx.fillStyle = c;
-    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+// the hero (and everything that mimics him) — composed from pixel matrices
+function drawHero(p, o) {
+  o = o || {};
+  const face = p.face || 1;
+  const sc = o.scale || 1;
+  const X = Math.round(p.x) - 3, Y = Math.round(p.y);
+  const remap = {};
+  if (o.corrupt) Object.assign(remap, CORRUPT_MAP);
+  else if (G.age > 0) remap[HR] = mixc(HR, '#cfcfcf', clamp(G.age / 8, 0, 1));
+  const horns = o.horns != null ? o.horns : G.flags.shrine;
+  if (!horns) remap[HG] = null;        // the ram horns are earned at Siwa
+  const so = { flip: face === -1, remap: remap, glitch: o.glitch, mono: o.mono, scale: sc };
+  function st(mat, ox, oy) {
+    const sx = face === 1 ? ox : 16 - ox - mat[0].length;
+    drawSprite(mat, X + sx * sc, Y + oy * sc, so);
   }
   const atk = p.atk || null;
   const moving = Math.abs(p.vx || 0) > 5;
-  const legA = moving ? Math.round(Math.sin(p.runPhase || 0) * 2) : 0;
-
-  // cloak (ochre, flutters when moving)
-  const fl = moving ? Math.round(Math.sin((G.time || 0) * 9) * 1.5) : 0;
-  R2(-8, 4, 3, 14 + fl, pal.cloak);
-  R2(-7, 4, 2, 12, pal.cloak2);
-
-  // back arm shield (front when blocking)
-  if (!p.block && atk == null) {
-    R2(-7, 7, 6, 6, pal.sh2);
-    R2(-6, 8, 4, 4, pal.sh1);
-    R2(-5, 9, 2, 2, pal.lion);
-  }
-
-  // legs + greaves + sandals
-  R2(-3 + legA, 16, 2, 5, pal.skin2);
-  R2(2 - legA, 16, 2, 5, pal.skin);
-  R2(-3 + legA, 16, 2, 2, pal.greave);
-  R2(2 - legA, 16, 2, 2, pal.greave);
-  R2(-3 + legA, 21, 3, 1, pal.sh1);
-  R2(2 - legA, 21, 3, 1, pal.sh1);
-
-  // pteruges skirt
-  for (let i = 0; i < 4; i++) R2(-4 + i * 2, 12, 2, 4, i % 2 ? pal.tunic : pal.cloak2);
-
-  // cuirass
-  R2(-4, 6, 9, 6, pal.cuir);
-  R2(-1, 6, 2, 6, pal.cuirHi);
-  R2(-4, 6, 1, 6, pal.cuirSh);
-  R2(-4, 11, 9, 1, pal.sh1);
-
-  // head + helmet
-  R2(-2, 1, 6, 5, pal.skin);
-  R2(-2, 1, 2, 5, pal.hair);
-  R2(-3, -1, 8, 3, pal.helm2);
-  R2(-3, 2, 2, 3, pal.helm2);
-  R2(3, 2, 2, 2, pal.helm1);
-  R2(-3, -1, 8, 1, pal.helm3);
-  if (horns) {
-    R2(4, -2, 2, 2, pal.helm3); R2(5, -4, 2, 2, pal.helm2); R2(4, -5, 2, 1, pal.helm3);
-    R2(-4, -2, 2, 2, pal.helm2); R2(-5, -4, 2, 2, pal.helm1);
-  }
-
-  // weapons
-  if (atk && atk.kind === 'spear') {
-    R2(2, 8, 24, 1, pal.spear); R2(26, 7, 3, 3, pal.tip);
-  } else if (atk && atk.kind === 'lunge') {
-    R2(2, 8, 28, 2, pal.spear); R2(30, 7, 4, 4, pal.tip);
-  } else if (atk && atk.kind === 'sword') {
-    if (atk.idx === 0) { R2(5, -4, 2, 10, pal.blade); R2(4, 5, 4, 2, pal.helm2); }
-    else if (atk.idx === 1) { R2(6, 7, 12, 2, pal.blade); R2(5, 6, 2, 4, pal.helm2); }
-    else { R2(6, 12, 11, 2, pal.blade); R2(5, 10, 2, 4, pal.helm2); }
-  } else if (atk && atk.kind === 'bash') {
-    // shield thrust
+  const stride = moving && Math.sin(p.runPhase || 0) > 0;
+  if (!p.block && !(atk && atk.kind === 'bash')) st(SHIELD_BACK, 0, 7);
+  st(HERO_BODY, 0, 0);
+  st(stride ? LEGS_B : LEGS_A, 0, 16);
+  if (atk && (atk.kind === 'spear' || atk.kind === 'lunge')) st(SPEAR_H, 11, 7);
+  else if (atk && atk.kind === 'sword') {
+    if (atk.idx === 0) st(SWORD_UP, 12, -4);
+    else if (atk.idx === 1) st(SWORD_MID, 12, 6);
+    else st(SWORD_DOWN, 12, 11);
   } else if (p.charge > 0) {
-    R2(-12, 6, 8, 1, pal.helm3); R2(-14, 9, 6, 1, pal.helm3);
-  } else {
-    R2(6, -6, 1, 24, pal.spear); R2(5, -9, 3, 3, pal.tip);
-  }
-
-  // shield front (block / bash)
-  if (p.block || (atk && atk.kind === 'bash')) {
-    const sx2 = atk && atk.kind === 'bash' ? 7 : 5;
-    R2(sx2, 5, 7, 11, pal.sh2);
-    R2(sx2 + 1, 6, 5, 9, pal.sh1);
-    R2(sx2 + 2, 9, 3, 3, pal.lion);
-    R2(sx2 + 3, 8, 1, 1, pal.sh1);
-  }
-
+    FR(X + (face === 1 ? -8 : 20), Y + 6, 6, 1, '#f3cf6b');
+    FR(X + (face === 1 ? -10 : 22), Y + 10, 6, 1, '#f3cf6b');
+  } else if (!p.block) st(SPEAR_V, 13, -5);
+  if (p.block || (atk && atk.kind === 'bash')) st(SHIELD_FRONT, atk ? 11 : 9, 5);
   // Tier-2 divinity shimmer
-  if (horns && !glitch && Math.random() < 0.12) {
-    R2(-5 + Math.floor(Math.random() * 11), -3 + Math.floor(Math.random() * 22), 1, 1, '#f3cf6b');
+  if (horns && !o.corrupt && Math.random() < 0.12) {
+    FR(X + Math.floor(Math.random() * 16), Y + Math.floor(Math.random() * 22), 1, 1, '#f3cf6b');
   }
-  ctx.restore();
 }
 
 function drawEnemy(e) {
-  const t = G.time;
-  const gl = e.petrified > 0 ? 0 : 1;
-  function gc(c) {
-    if (e.petrified > 0) return '#8a93a0';
-    return (gl && Math.random() < 0.15) ? (Math.random() < 0.5 ? '#39ff6a' : '#b03cff') : c;
-  }
-  const jx = e.petrified > 0 ? 0 : (Math.random() < 0.3 ? Math.floor(Math.random() * 3) - 1 : 0);
+  const pet = e.petrified > 0;
+  const mono = pet ? '#8a93a0' : null;
   if (e.type === 'numberless') {
-    FR(e.x + jx, e.y, 6, 6, gc('#2a2433'));
-    FR(e.x + 1 + jx, e.y + 1, 2, 2, gc('#39ff6a'));
-    FR(e.x + 4, e.y + 2, 1, 1, gc('#ff3963'));
+    drawSprite(NUMBERLESS, e.x - 1, e.y - 2, { glitch: !pet, mono: mono });
   } else if (e.type === 'licker') {
-    for (let i = 0; i < 4; i++) {
-      const sy = Math.sin(t * 8 + i * 1.2 + e.seed) * 2;
-      FR(e.x + i * 4 + jx, e.y + 3 + sy, 4, 4, gc(i === 0 ? '#3a4a3d' : '#2a2433'));
-    }
-    FR(e.x + (e.facing === -1 ? 0 : 12) + jx, e.y + 2, 2, 2, gc('#39ff6a'));
-    FR(e.x + (e.facing === -1 ? -2 : 16), e.y + 5, 2, 1, gc('#b03cff'));
+    const bob = pet ? 0 : Math.round(Math.sin(G.time * 8 + e.seed));
+    drawSprite(LICKER, e.x - 2, e.y + bob, { glitch: !pet, mono: mono, flip: e.facing === -1 });
   } else if (e.type === 'biter') {
-    FR(e.x + jx, e.y, 18, 9, gc('#3a3f46'));
-    FR(e.x + 2, e.y + 2, 14, 5, gc('#2a2433'));
-    for (let i = 0; i < 3; i++) FR(e.x + 3 + i * 5, e.y + 1, 2, 1, gc('#6a7079'));
-    FR(e.x, e.y + 9, 4, 3, gc('#2a2433'));
-    FR(e.x + 14, e.y + 9, 4, 3, gc('#2a2433'));
-    const mo = Math.floor(t * 14) % 2;
-    const mx = e.facing === -1 ? e.x - 3 : e.x + 18;
-    FR(mx, e.y + 2 + mo, 3, 2, gc('#dfe3e8'));
-    FR(mx, e.y + 6 - mo, 3, 2, gc('#dfe3e8'));
-    FR(e.x + (e.facing === -1 ? 2 : 14), e.y + 3, 2, 2, gc('#ff3963'));
+    drawSprite(BITER, e.x - 1, e.y, { glitch: !pet, mono: mono, flip: e.facing === -1 });
   } else if (e.type === 'echoborn') {
-    drawHero({ x: e.x, y: e.y, w: e.w, h: e.h, face: e.facing, vx: e.vx, runPhase: t * 10, block: false, atk: null, charge: 0 },
-      { pal: GPAL, glitch: e.petrified <= 0, horns: true });
-    if (e.petrified > 0) { G.ctx.globalAlpha = 0.75; FR(e.x - 2, e.y - 4, 14, 28, '#8a93a0'); G.ctx.globalAlpha = 1; }
+    drawHero({ x: e.x, y: e.y, w: e.w, h: e.h, face: e.facing, vx: e.vx, runPhase: G.time * 10, block: false, atk: null, charge: 0 },
+      { corrupt: true, glitch: !pet, mono: mono, horns: true });
   }
 }
 
@@ -198,7 +100,7 @@ function drawBoss() {
     }
   } else if (b.phase === 3) {
     drawHero({ x: b.x, y: b.y, w: 10, h: 22, face: G.player.x < b.x ? -1 : 1, vx: b.vx, runPhase: t * 10, block: b.parryCd <= 0, atk: null, charge: 0 },
-      { pal: GPAL, glitch: true, horns: true });
+      { corrupt: true, glitch: true, horns: true });
   }
 }
 
@@ -341,14 +243,8 @@ function drawTerrain(camX) {
     }
     const gy = G.world.ground[c];
     const shade = 0.92 + hash2(c, 3) * 0.16;
-    FR(x, gy, TS, 4, pal.grass);
-    FR(x, gy + 4, TS, G.H - gy, mixc(pal.ground, '#000000', 1 - shade + 0.04));
-    FR(x, gy + 26, TS, G.H - gy - 26, mixc(pal.dirt, '#000000', 1 - shade + 0.06));
-    // dither speckles
-    for (let s = 0; s < 3; s++) {
-      const hx = hash2(c * 7 + s, 5);
-      FR(x + Math.floor(hx * 14), gy + 6 + Math.floor(hash2(c, s + 9) * 30), 2, 2, mixc(pal.ground, pal.grass, 0.4));
-    }
+    drawTile(TILE_GRASS, x, gy, zoneT(x));
+    FR(x, gy + 16, TS, G.H - gy - 16, mixc(pal.dirt, '#000000', 1 - shade + 0.06));
   }
   // one-way platforms
   for (const p of G.world.plats) {
@@ -373,13 +269,13 @@ function drawDecos(camX) {
     if (gy > 900) continue;
     const pal = palAt(d.x);
     if (d.type === 'column') {
-      FR(d.x, gy - d.h, 8, d.h, '#e8e0cc');
-      FR(d.x + 1, gy - d.h, 2, d.h, '#fff8e8');
-      FR(d.x - 2, gy - d.h, 12, 3, '#e8e0cc');
-      FR(d.x - 2, gy - 3, 12, 3, '#d8d0bc');
+      const drums = Math.max(2, Math.round(d.h / 8));
+      for (let k2 = 1; k2 <= drums; k2++) drawTile(RUIN_SHAFT, d.x, gy - k2 * 8);
+      drawSprite(RUIN_CAP, d.x - 2, gy - drums * 8 - 4);
     } else if (d.type === 'brokencol') {
-      FR(d.x, gy - d.h, 8, d.h, '#ddd5c0');
-      FR(d.x - 1, gy - d.h, 10, 2, '#c8c0ac');
+      const drums = Math.max(1, Math.round(d.h / 8));
+      for (let k2 = 1; k2 <= drums; k2++) drawTile(RUIN_SHAFT, d.x, gy - k2 * 8);
+      FR(d.x, gy - drums * 8 - 2, 8, 2, '#c8c0ac');
     } else if (d.type === 'laurel') {
       FR(d.x + 3, gy - 6, 2, 6, '#6b4a2a');
       FR(d.x, gy - 12, 8, 7, '#7d9c48');
@@ -428,9 +324,7 @@ function drawLandmarks(camX) {
     FR(x - 20, gy - 14, 16, 14, '#94805f');
     FR(x - 16, gy - 18, 8, 5, '#b09a78');
     FR(x + 8, gy - 3, 12, 3, '#3d3328');
-    const f = Math.floor(G.time * 8) % 2;
-    FR(x + 11, gy - 8 + f, 6, 6 - f, '#f3a33c');
-    FR(x + 13, gy - 10 + f, 2, 3, '#f6e3a8');
+    drawSprite(Math.floor(G.time * 8) % 2 ? FLAME_A : FLAME_B, x + 10, gy - 9);
     FR(x - 2, gy - 26, 2, 26, '#6b4a2a');
     FR(x, gy - 26, 8, 5, '#c9912f');
     if (Math.abs(G.player.x - x) < 30 && G.player.hp < G.player.maxhp) drawPrompt(x, gy - 34, 'E: REST');
@@ -439,11 +333,8 @@ function drawLandmarks(camX) {
   for (const bx of w.braziers) {
     if (bx < camX - 30 || bx > camX + G.W + 30) continue;
     const gy = terrainY(bx, true);
-    FR(bx - 1, gy - 12, 3, 12, '#3a3f46');
-    FR(bx - 4, gy - 15, 9, 4, '#5b5f66');
-    const f = Math.floor(G.time * 9 + bx) % 2;
-    FR(bx - 3, gy - 21 + f, 7, 6 - f, '#f3a33c');
-    FR(bx - 1, gy - 23 + f, 3, 3, '#f6e3a8');
+    drawSprite(BRAZIER, bx - 4, gy - 12);
+    drawSprite(Math.floor(G.time * 9 + bx) % 2 ? FLAME_A : FLAME_B, bx - 3, gy - 17);
   }
   // cracked rocks
   for (const r of w.rocks) {
@@ -498,23 +389,15 @@ function drawWall(camX) {
       if (Math.abs(G.player.x - (s.x + s.w / 2)) < 22 && G.flags.reachedWall) drawPrompt(s.x + s.w / 2, s.base - 28, 'E: BUILD (IRON)');
     } else {
       const dmg = s.hp / s.maxhp;
-      // iron block courses
+      // iron / brass-sealed block courses, two tiles per row
+      const mat = s.stage === 2 ? TILE_BRASS : TILE_IRON;
       for (let row = 0; row < Math.ceil(h / 8); row++) {
-        const off = (row % 2) * 6;
-        FR(s.x, s.top + row * 8, s.w, 8, row % 2 ? '#3a3f46' : '#41464e');
-        FR(s.x + off + 3, s.top + row * 8 + 3, 2, 2, '#6a7079');
-        FR(s.x + off + 14, s.top + row * 8 + 5, 2, 2, '#565b63');
+        drawTile(mat, s.x, s.top + row * 8);
+        drawTile(mat, s.x + 13, s.top + row * 8);
       }
       // battlement
       for (let m2 = 0; m2 < 3; m2++) FR(s.x + 2 + m2 * 9, s.top - 5, 6, 5, '#3a3f46');
-      if (s.stage === 2) {
-        // brass seams + meander engraving: the Iron Verse made real
-        FR(s.x + 4, s.top, 2, h, '#d9a85a');
-        FR(s.x + s.w - 6, s.top, 2, h, '#d9a85a');
-        FR(s.x, s.top + 10, s.w, 2, '#d9a85a');
-        for (let mx = 0; mx < 3; mx++) FR(s.x + 4 + mx * 8, s.top + 16, 4, 2, '#c9912f');
-        if (Math.random() < 0.06) FR(s.x + Math.random() * s.w, s.top + Math.random() * h, 1, 1, '#f3cf6b');
-      }
+      if (s.stage === 2 && Math.random() < 0.06) FR(s.x + Math.random() * s.w, s.top + Math.random() * h, 1, 1, '#f3cf6b');
       if (s.weak) FR(s.x + s.w / 2 - 1, s.top + 8, 2, h - 16, '#1d2434');
       // damage cracks
       if (dmg < 0.7) {
@@ -859,7 +742,7 @@ function drawTitle() {
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], G.W / 2, 126 + i * 11);
   ctx.fillStyle = Math.floor(G.time * 2) % 2 ? '#f3cf6b' : '#8a5a18';
   ctx.font = '9px monospace';
-  ctx.fillText('PRESS ENTER', G.W / 2, 212);
+  ctx.fillText(G.touchMode ? 'TAP TO BEGIN — TOUCH PADS ENABLED' : 'PRESS ENTER', G.W / 2, 212);
   ctx.textAlign = 'left';
   drawMeander();
 }
@@ -985,7 +868,7 @@ function drawAll() {
   drawWall(camX);
   for (const ec of G.echoes) {
     ctx.globalAlpha = 0.65;
-    drawHero({ x: ec.x - 5, y: ec.y, w: 10, h: 20, face: 1, vx: 0, runPhase: 0, block: true, atk: null, charge: 0 }, { pal: HPAL, horns: false });
+    drawHero({ x: ec.x - 5, y: ec.y, w: 10, h: 20, face: 1, vx: 0, runPhase: 0, block: true, atk: null, charge: 0 }, { horns: false });
     ctx.globalAlpha = 1;
   }
   for (const o of G.orbs) {

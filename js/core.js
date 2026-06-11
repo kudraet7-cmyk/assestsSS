@@ -68,7 +68,9 @@ function bootCanvas() {
   G.ctx = c.getContext('2d');
   G.ctx.imageSmoothingEnabled = false;
   const fit = function () {
-    const s = Math.max(1, Math.floor(Math.min(window.innerWidth / G.W, window.innerHeight / G.H)));
+    const m = Math.min(window.innerWidth / G.W, window.innerHeight / G.H);
+    // integer scale when there's room; fractional fill on small/tablet screens
+    const s = m >= 2 ? Math.floor(m) : Math.max(0.6, m);
     c.style.width = (G.W * s) + 'px';
     c.style.height = (G.H * s) + 'px';
   };

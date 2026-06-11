@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ORDER = ['core.js', 'world.js', 'actors.js', 'render.js', 'main.js'];
+const ORDER = ['core.js', 'sprites.js', 'world.js', 'actors.js', 'render.js', 'main.js', 'touch.js'];
 const js = ORDER.map(function (f) {
   const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
   return '// ' + '='.repeat(60) + '\n// SOURCE: js/' + f + '\n// ' + '='.repeat(60) + '\n' + src;
