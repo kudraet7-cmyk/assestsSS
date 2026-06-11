@@ -12,10 +12,2550 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script src="js/core.js"></script>
-<script src="js/world.js"></script>
-<script src="js/actors.js"></script>
-<script src="js/render.js"></script>
-<script src="js/main.js"></script>
+<script>
+// ============================================================
+// SOURCE: js/core.js
+// ============================================================
+// ============================================================
+// ISKANDER: GATES OF THE TWO-HORNED — core: state, input, audio
+// ============================================================
+window.G = {
+  W: 480, H: 270,
+  state: 'title',          // title | play | menu | choice | ending | gameover
+  keys: {}, pressed: {},
+  time: 0, slowT: 0, shake: 0, flash: 0, flashCol: '#fff',
+  cam: { x: 0, y: 0 },
+  doxa: 0, mythos: 0, iron: 6, brass: 0, engineers: 0, age: 0,
+  skills: {},
+  flags: { shrine: false, reachedWall: false, bossDone: false, pourHint: false },
+  msgs: [],
+  enemies: [], projectiles: [], particles: [], orbs: [],
+  echoes: [], ramparts: [], brassPlats: [],
+  boss: null, seal: null, ending: null, choiceSel: 0,
+  stats: { kills: 0, waves: 0, relics: 0 },
+  gameoverReason: '',
+};
+
+// ---------- helpers ----------
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function qz(v, s) { return Math.round(v / s) * s; }
+function dist(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return Math.sqrt(dx * dx + dy * dy); }
+function aabb(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+// deterministic hash noise (for dithering / glitch / decor placement)
+function hash2(a, b) {
+  let h = (a | 0) * 374761393 + (b | 0) * 668265263;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+}
+
+// seeded rng for world generation
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+G.srand = mulberry32(8472);
+
+// color mix with memoization (hot path: terrain palette lerping)
+const _mixCache = {};
+function mixc(a, b, t) {
+  t = clamp(t, 0, 1);
+  const tq = Math.round(t * 24);
+  const key = a + b + tq;
+  if (_mixCache[key]) return _mixCache[key];
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const tt = tq / 24;
+  const r = Math.round(lerp(pa >> 16, pb >> 16, tt));
+  const g = Math.round(lerp((pa >> 8) & 255, (pb >> 8) & 255, tt));
+  const bl = Math.round(lerp(pa & 255, pb & 255, tt));
+  return (_mixCache[key] = 'rgb(' + r + ',' + g + ',' + bl + ')');
+}
+
+function msg(text, dur) { G.msgs.push({ text: text, t: dur || 3.2 }); if (G.msgs.length > 3) G.msgs.shift(); }
+
+// ---------- canvas ----------
+function bootCanvas() {
+  const c = document.getElementById('game');
+  c.width = G.W; c.height = G.H;
+  G.canvas = c;
+  G.ctx = c.getContext('2d');
+  G.ctx.imageSmoothingEnabled = false;
+  const fit = function () {
+    const s = Math.max(1, Math.floor(Math.min(window.innerWidth / G.W, window.innerHeight / G.H)));
+    c.style.width = (G.W * s) + 'px';
+    c.style.height = (G.H * s) + 'px';
+  };
+  window.addEventListener('resize', fit);
+  fit();
+}
+
+// ---------- input ----------
+const KEYMAP = {
+  'arrowleft': 'left', 'a': 'left',
+  'arrowright': 'right', 'd': 'right',
+  'arrowup': 'jump', 'w': 'jump', ' ': 'jump',
+  'arrowdown': 'down', 's': 'down',
+  'j': 'sword', 'x': 'sword',
+  'k': 'spear', 'c': 'spear',
+  'l': 'shield', 'v': 'shield',
+  'shift': 'dash',
+  'e': 'use', 'g': 'garrison', 'q': 'menu',
+  '1': 's1', '2': 's2', '3': 's3', '4': 's4', '5': 's5',
+  'enter': 'enter', 'escape': 'esc', 'p': 'esc', 'r': 'restart',
+};
+function initInput() {
+  window.addEventListener('keydown', function (e) {
+    const k = KEYMAP[e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase()];
+    if (!k) return;
+    e.preventDefault();
+    if (!G.keys[k]) G.pressed[k] = true;
+    G.keys[k] = true;
+    initAudio();
+  });
+  window.addEventListener('keyup', function (e) {
+    const k = KEYMAP[e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase()];
+    if (!k) return;
+    G.keys[k] = false;
+  });
+  window.addEventListener('blur', function () { G.keys = {}; });
+}
+
+// ---------- audio: tiny procedural synth ----------
+let AC = null;
+function initAudio() {
+  if (AC) return;
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; }
+}
+function tone(freq, dur, type, vol, slide) {
+  if (!AC) return;
+  try {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, AC.currentTime);
+    if (slide) o.frequency.linearRampToValueAtTime(Math.max(20, freq + slide), AC.currentTime + dur);
+    g.gain.setValueAtTime(vol || 0.06, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + dur);
+    o.connect(g); g.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime + dur);
+  } catch (e) { /* audio is never fatal */ }
+}
+function noiseBurst(dur, vol, lowpass) {
+  if (!AC) return;
+  try {
+    const n = Math.floor(AC.sampleRate * dur);
+    const buf = AC.createBuffer(1, n, AC.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = AC.createBufferSource(); src.buffer = buf;
+    const g = AC.createGain(); g.gain.value = vol || 0.1;
+    const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lowpass || 900;
+    src.connect(f); f.connect(g); g.connect(AC.destination);
+    src.start();
+  } catch (e) { /* ignore */ }
+}
+G.sfx = {
+  swing: function () { tone(300, 0.07, 'sawtooth', 0.04, -140); },
+  hit: function () { tone(170, 0.08, 'square', 0.07, -70); noiseBurst(0.05, 0.05, 1400); },
+  hurt: function () { tone(120, 0.18, 'sawtooth', 0.09, -60); },
+  parry: function () { tone(720, 0.05, 'square', 0.07, 300); noiseBurst(0.22, 0.14, 700); tone(90, 0.3, 'sawtooth', 0.1, -40); },
+  jump: function () { tone(220, 0.08, 'square', 0.035, 120); },
+  dash: function () { noiseBurst(0.08, 0.05, 2200); },
+  pickup: function () { tone(660, 0.07, 'square', 0.05, 220); },
+  relic: function () { tone(520, 0.1, 'triangle', 0.08, 0); tone(780, 0.22, 'triangle', 0.07, 60); },
+  build: function () { tone(140, 0.1, 'square', 0.08, -30); tone(420, 0.06, 'square', 0.05, -80); },
+  pour: function () { noiseBurst(0.3, 0.07, 500); tone(95, 0.3, 'sawtooth', 0.05, -20); },
+  breakRock: function () { noiseBurst(0.25, 0.13, 600); tone(80, 0.2, 'square', 0.09, -30); },
+  mine: function () { tone(500, 0.04, 'square', 0.04, -100); },
+  roar: function () { tone(70, 0.7, 'sawtooth', 0.14, -25); noiseBurst(0.6, 0.16, 500); },
+  bossRoar: function () { tone(55, 0.9, 'sawtooth', 0.15, -15); noiseBurst(0.8, 0.15, 380); },
+  ui: function () { tone(440, 0.05, 'square', 0.04, 0); },
+  buy: function () { tone(523, 0.08, 'square', 0.05, 0); tone(784, 0.14, 'square', 0.05, 0); },
+  deny: function () { tone(140, 0.12, 'square', 0.05, -40); },
+  petrify: function () { tone(900, 0.5, 'sawtooth', 0.07, -700); noiseBurst(0.4, 0.1, 1100); },
+  wave: function () { tone(98, 0.5, 'sawtooth', 0.1, 20); tone(110, 0.6, 'sawtooth', 0.08, -20); },
+};
+
+// ============================================================
+// SOURCE: js/world.js
+// ============================================================
+// ============================================================
+// ISKANDER — world: terrain, biomes, the Wall, the Hunger Front,
+// waves, ore nodes, relics, interactions
+// ============================================================
+const TS = 16, COLS = 320, WORLD_W = COLS * TS;   // 5120 px of scrolling world
+const WATER_Y = 224;
+const BREACH_X = 5020;
+
+// Act palettes: [Hellenic dawn, Eastern marches, Roof of the World]
+const ACTS = [
+  { top: '#7ec0d8', bot: '#f6c87a', far: '#cfa863', mid: '#a8743f', ground: '#8a5a33', dirt: '#6b4426', grass: '#c8a34e', fg: '#503320' },
+  { top: '#9f8fae', bot: '#d8a35e', far: '#b08a52', mid: '#7d5f43', ground: '#74543a', dirt: '#594031', grass: '#9c8648', fg: '#443528' },
+  { top: '#252c44', bot: '#7787a0', far: '#9fb2c4', mid: '#56657d', ground: '#5d6573', dirt: '#454c59', grass: '#dfe8ef', fg: '#1d2434' },
+];
+// 0..2 act parameter with blend windows
+function zoneT(x) {
+  if (x < 1350) return 0;
+  if (x < 1650) return (x - 1350) / 300;
+  if (x < 3050) return 1;
+  if (x < 3350) return 1 + (x - 3050) / 300;
+  return 2;
+}
+function palAt(x) {
+  const t = zoneT(x);
+  const a = ACTS[Math.floor(clamp(t, 0, 1.999))], b = ACTS[Math.ceil(clamp(t, 0.001, 2))];
+  const f = t - Math.floor(t);
+  const out = {};
+  for (const k in a) out[k] = mixc(a[k], b[k], f);
+  return out;
+}
+
+G.world = null;
+G.wall = null;
+G.front = null;
+G.waveSys = null;
+
+function initWorld() {
+  const R = G.srand;
+  const ground = new Array(COLS);
+  const water = new Array(COLS).fill(false);
+
+  // rivers (jump them with dash, or earn Anointed Stride and walk across)
+  for (let c = 74; c <= 78; c++) water[c] = true;     // Nile branch, Act I
+  for (let c = 162; c <= 166; c++) water[c] = true;   // steppe river, Act II
+
+  for (let c = 0; c < COLS; c++) {
+    const x = c * TS;
+    let h;
+    if (x < 1500) h = 206 - qz(Math.sin(c * 0.18) * 14, 4);
+    else if (x < 3200) h = 214 - qz(Math.sin(c * 0.07) * 6, 4);
+    else if (x < 3840) h = qz(lerp(214, 180, (x - 3200) / 640), 4);
+    else if (x < 4160) h = 180;                        // the Wall's ledge
+    else if (x < 4760) h = 180 - qz(Math.sin(c * 0.31) * 10, 4);
+    else h = 172 + qz(Math.sin(c * 0.5) * 6, 4);       // breach plateau
+    ground[c] = h;
+  }
+  // limit step size so the hero can always walk/jump the terrain
+  for (let c = 1; c < COLS; c++) {
+    if (water[c] || water[c - 1]) continue;
+    const d = ground[c] - ground[c - 1];
+    if (d > 12) ground[c] = ground[c - 1] + 12;
+    if (d < -12) ground[c] = ground[c - 1] - 12;
+  }
+
+  // one-way platforms
+  const plats = [];
+  function plat(x, y, w) { plats.push({ x: x, y: y, w: w, h: 4 }); }
+  plat(310, 168, 52); plat(540, 150, 44); plat(742, 158, 56);
+  plat(1168, 196, 36);                                 // broken bridge over the Nile
+  plat(1232, 196, 40);
+  plat(1950, 176, 52); plat(2150, 160, 44); plat(2380, 176, 56);
+  plat(2580, 196, 36); plat(2660, 196, 36);            // steppe river pontoons
+  plat(3120, 176, 48); plat(3520, 150, 44);
+  plat(4250, 140, 40); plat(4430, 128, 44); plat(4620, 120, 44);
+  plat(4850, 132, 48);
+
+  // cracked rocks: metroidvania gates for Besieger / Horns of Ammon
+  const rocks = [
+    { x: 1496, w: 18, h: 36, broken: false, hp: 3 },
+    { x: 2848, w: 18, h: 36, broken: false, hp: 3 },
+    { x: 4296, w: 18, h: 40, broken: false, hp: 3 },
+  ];
+  for (const r of rocks) r.y = ground[Math.floor(r.x / TS)] - r.h;
+
+  // relics grant Mythos
+  const relicXs = [330, 760, 1200, 1540, 1975, 2400, 2640, 2890, 3140, 4640, 4880];
+  const relics = relicXs.map(function (x) {
+    let y = ground[Math.floor(x / TS)] - 12;
+    for (const p of plats) if (x >= p.x && x <= p.x + p.w) y = Math.min(y, p.y - 12);
+    if (water[Math.floor(x / TS)]) y = WATER_Y - 12;   // the river relic needs Anointed Stride
+    return { x: x, y: y, got: false };
+  });
+
+  // ore nodes east of the Wall (sortie loot)
+  const nodes = [];
+  function node(x, type) {
+    nodes.push({ x: x, y: ground[Math.floor(x / TS)] - 8, type: type, amt: 3, prog: 0, respawn: 0 });
+  }
+  node(4210, 'iron'); node(4360, 'iron'); node(4470, 'iron'); node(4560, 'iron');
+  node(4680, 'iron'); node(4790, 'iron');
+  node(4730, 'brass'); node(4860, 'brass'); node(4950, 'brass'); node(5010, 'brass');
+
+  // captive engineer cages (break them open)
+  const cages = [
+    { x: 4520, w: 18, h: 20, hp: 6, freed: false },
+    { x: 4920, w: 18, h: 20, hp: 6, freed: false },
+  ];
+  for (const cg of cages) cg.y = ground[Math.floor(cg.x / TS)] - cg.h;
+
+  // scenery decorations, placed deterministically
+  const decos = [];
+  for (let c = 2; c < COLS - 2; c++) {
+    const x = c * TS;
+    if (water[c]) continue;
+    const r = R();
+    const t = zoneT(x);
+    if (t < 0.5) {
+      if (r < 0.05) decos.push({ x: x, type: 'column', h: 34 + qz(R() * 20, 4) });
+      else if (r < 0.08) decos.push({ x: x, type: 'brokencol', h: 14 + qz(R() * 10, 2) });
+      else if (r < 0.13) decos.push({ x: x, type: 'laurel', h: 10 });
+    } else if (t < 1.5) {
+      if (r < 0.03) decos.push({ x: x, type: 'yurt', h: 18 });
+      else if (r < 0.07) decos.push({ x: x, type: 'bones', h: 6 });
+      else if (r < 0.2) decos.push({ x: x, type: 'tuft', h: 7 });
+    } else {
+      if (r < 0.06 && (x < 3800 || x > 4180)) decos.push({ x: x, type: 'pine', h: 26 + qz(R() * 14, 2) });
+      else if (r < 0.1) decos.push({ x: x, type: 'shard', h: 10 });
+    }
+  }
+
+  G.world = {
+    ground: ground, water: water, plats: plats, rocks: rocks,
+    relics: relics, nodes: nodes, cages: cages, decos: decos,
+    shrine: { x: 1450, used: false },
+    camp: { x: 3380 },
+  };
+
+  // ---- the Wall: 8 segments spanning the pass ----
+  const segs = [];
+  const x0 = 3840, segW = 26;
+  for (let i = 0; i < 8; i++) {
+    segs.push({
+      i: i, x: x0 + i * segW, w: segW,
+      top: 124, base: 180,
+      stage: 0, hp: 0, maxhp: 0, weak: false, garrison: false,
+    });
+  }
+  G.wall = { x0: x0, segW: segW, segs: segs, gateIndex: 4 };
+  G.wall.gateX = segs[4].x + segW / 2;
+  G.world.braziers = [G.wall.gateX - 46, G.wall.gateX + 46];
+
+  G.front = { x: 5060, base: 5060 };
+  G.waveSys = { t: 75, wave: 0, active: false, warned: false, bossNext: false, bossT: 0 };
+}
+
+// ---------- terrain queries ----------
+function terrainY(x, walkWater) {
+  const c = clamp(Math.floor(x / TS), 0, COLS - 1);
+  if (G.world.water[c]) return walkWater ? WATER_Y : 999;
+  return G.world.ground[c];
+}
+// ground level under an entity (min over its feet span), incl. one-way platforms
+function groundLevel(ent, walkWater) {
+  let g = Math.min(
+    terrainY(ent.x + 2, walkWater),
+    terrainY(ent.x + ent.w / 2, walkWater),
+    terrainY(ent.x + ent.w - 2, walkWater)
+  );
+  const feet = ent.y + ent.h;
+  const all = G.world.plats.concat(G.brassPlats);
+  for (const p of all) {
+    if (ent.x + ent.w > p.x && ent.x < p.x + p.w && feet <= p.y + 6 && p.y < g) g = p.y;
+  }
+  return g;
+}
+// rects that stop enemies (the whole endgame thesis: walls)
+function enemyBlockers() {
+  const out = [];
+  for (const s of G.wall.segs) {
+    if (s.stage > 0) out.push({ x: s.x, y: s.top, w: s.w, h: s.base - s.top, kind: 'seg', ref: s });
+  }
+  for (const r of G.ramparts) out.push({ x: r.x, y: r.y, w: r.w, h: r.h, kind: 'rampart', ref: r });
+  for (const e of G.echoes) out.push({ x: e.x - 4, y: e.y, w: 8, h: 20, kind: 'echo', ref: e });
+  return out;
+}
+function solidRocks() {
+  const out = [];
+  for (const r of G.world.rocks) if (!r.broken) out.push(r);
+  return out;
+}
+
+function damageSeg(seg, d) {
+  if (seg.stage === 0) return;
+  seg.hp -= d;
+  if (seg.hp <= 0) {
+    seg.stage = 0; seg.hp = 0; seg.garrison = false;
+    for (let i = G.echoes.length - 1; i >= 0; i--) if (G.echoes[i].segI === seg.i) G.echoes.splice(i, 1);
+    G.shake = Math.max(G.shake, 5);
+    G.sfx.breakRock();
+    msg('A WALL SEGMENT HAS FALLEN!', 3.5);
+  }
+}
+
+// ---------- the Hunger Front (creeping corruption) ----------
+function updateFront(dt) {
+  const f = G.front;
+  const allBrass = G.wall.segs.every(function (s) { return s.stage >= 2; });
+  if (G.flags.bossDone || allBrass) {
+    f.x = Math.min(f.x + 7 * dt, BREACH_X);          // the Wall holds; the static recedes
+    return;
+  }
+  let spd = G.flags.reachedWall ? 1.1 + G.waveSys.wave * 0.13 : 0.45;
+  const anyBuilt = G.wall.segs.some(function (s) { return s.stage > 0; });
+  const wallEast = G.wall.x0 + 8 * G.wall.segW;
+  if (anyBuilt && f.x < wallEast + 60) spd *= 0.25;   // even a partial wall slows the Fraying
+  f.x -= spd * dt;
+  if (f.x < G.world.camp.x + 60) {
+    G.state = 'gameover';
+    G.gameoverReason = 'The Fraying reached the forge-camp. The world de-rezzed, screen by screen.';
+  }
+}
+
+// ---------- wave system (the doom-clock) ----------
+function updateWaves(dt) {
+  const ws = G.waveSys;
+  if (!G.flags.reachedWall || G.boss || G.flags.bossDone) return;
+
+  if (ws.active) {
+    let alive = 0;
+    for (const e of G.enemies) if (e.waveTag) alive++;
+    if (alive === 0) {
+      ws.active = false;
+      G.stats.waves++;
+      const bonus = 5 + ws.wave * 2;
+      G.doxa += bonus;
+      msg('WAVE ' + ws.wave + ' BROKEN  (+' + bonus + ' Doxa)', 3.5);
+      ws.t = 75;
+      ws.warned = false;
+      // respawn some ore so the forge cycle keeps turning
+      for (const n of G.world.nodes) if (n.amt <= 0 && Math.random() < 0.6) n.amt = 3;
+      if (ws.wave >= 5 && G.wall.segs.every(function (s) { return s.stage >= 1; })) {
+        ws.bossNext = true; ws.bossT = 18;
+        msg('THE AURORA SCREAMS. SOMETHING VAST APPROACHES THE GATE.', 5);
+      }
+    }
+    return;
+  }
+  if (ws.bossNext) {
+    ws.bossT -= dt;
+    if (ws.bossT <= 0) startBoss();
+    return;
+  }
+  ws.t -= dt;
+  if (ws.t < 12 && !ws.warned) { ws.warned = true; msg('THE HORDE STIRS BEYOND THE WALL...', 3.5); G.sfx.wave(); }
+  if (ws.t <= 0) spawnWave();
+}
+
+function spawnWave() {
+  const ws = G.waveSys;
+  ws.wave++; ws.active = true;
+  G.sfx.wave();
+  msg('WAVE ' + ws.wave + ' — THE NUMBERLESS COME', 3.5);
+  const w = ws.wave;
+  const wallEast = G.wall.x0 + 8 * G.wall.segW;
+  function sx() { return clamp(wallEast + 200 + Math.random() * 320, wallEast + 160, 5040); }
+  for (let i = 0; i < 4 + w * 2; i++) spawnEnemy('numberless', sx(), true);
+  for (let i = 0; i < Math.max(0, w - 1); i++) spawnEnemy('licker', sx(), true);
+  if (w >= 2) for (let i = 0; i < 1 + Math.floor(w / 2); i++) spawnEnemy('biter', sx(), true);
+  if (w % 3 === 0) spawnEnemy('echoborn', sx(), true);
+}
+
+// ---------- player interactions (E) ----------
+function nearestSeg(px) {
+  let best = null, bd = 26;
+  for (const s of G.wall.segs) {
+    const d = Math.abs(px - (s.x + s.w / 2));
+    if (d < bd) { bd = d; best = s; }
+  }
+  return best;
+}
+
+function tryInteract(p, dt) {
+  const held = G.keys.use, tapped = G.pressed.use;
+  const px = p.x + p.w / 2;
+
+  // --- pouring brass (channel; interruptible) ---
+  if (p.pour) {
+    const seg = p.pour.seg;
+    if (!held || p.hurtT > 0 || Math.abs(px - (seg.x + seg.w / 2)) > 30) {
+      if (p.pour.t > 0.4) { seg.weak = true; msg('THE POUR FAILED — a weak seam remains.', 3); }
+      p.pour = null;
+    } else {
+      p.pour.t += dt;
+      if (Math.random() < 0.4) addPart(seg.x + Math.random() * seg.w, seg.top + 6, (Math.random() - 0.5) * 20, -30, '#f3a33c', 0.4);
+      if (p.pour.t >= p.pour.need) {
+        G.brass -= 2;
+        seg.stage = 2; seg.maxhp = seg.weak ? 110 : 160; seg.hp = seg.maxhp;
+        p.pour = null;
+        G.sfx.pour(); G.shake = 3;
+        msg('BRASS POURED. The segment will not crack.', 3);
+      }
+    }
+    return;
+  }
+
+  // --- mining ore ---
+  let nearNode = null;
+  for (const n of G.world.nodes) {
+    if (n.amt > 0 && Math.abs(px - n.x) < 16 && Math.abs(p.y + p.h - n.y - 8) < 24) { nearNode = n; break; }
+  }
+  if (nearNode && held) {
+    nearNode.prog += dt;
+    if (nearNode.prog >= 0.8) {
+      nearNode.prog = 0; nearNode.amt--;
+      if (nearNode.type === 'iron') { G.iron++; msg('+1 Altai iron (' + G.iron + ')', 1.2); }
+      else { G.brass++; msg('+1 brass ore (' + G.brass + ')', 1.2); }
+      G.sfx.mine();
+      addPart(nearNode.x, nearNode.y, (Math.random() - 0.5) * 40, -50, nearNode.type === 'iron' ? '#8a93a0' : '#d9a85a', 0.5);
+    }
+    return;
+  }
+
+  if (!tapped) return;
+
+  // --- the Wall: build / repair / pour ---
+  const seg = nearestSeg(px);
+  if (seg && p.y + p.h > seg.top) {
+    const ironCost = G.engineers > 0 ? 3 : 4;
+    if (seg.stage === 0) {
+      if (G.iron >= ironCost) {
+        G.iron -= ironCost;
+        seg.stage = 1; seg.maxhp = 60; seg.hp = 60; seg.weak = false;
+        G.sfx.build(); G.shake = 2;
+        msg('IRON RAISED — segment ' + (seg.i + 1) + '/8 framed.', 2.5);
+        if (!G.flags.pourHint) { G.flags.pourHint = true; msg('Bring 2 BRASS and hold E to pour the unbreakable seam.', 4); }
+      } else { G.sfx.deny(); msg('Need ' + ironCost + ' iron. Sortie east, beyond the Wall.', 2.5); }
+      return;
+    }
+    if (seg.stage === 1 && seg.hp < seg.maxhp * 0.6) {
+      if (G.iron >= 1) { G.iron--; seg.hp = Math.min(seg.maxhp, seg.hp + 25); G.sfx.build(); msg('Segment repaired.', 1.5); }
+      else { G.sfx.deny(); msg('Need iron to repair.', 1.5); }
+      return;
+    }
+    if (seg.stage === 1) {
+      if (G.brass >= 2) {
+        p.pour = { seg: seg, t: 0, need: Math.max(1.4, 2.6 - G.engineers * 0.4) };
+        msg('POURING... hold E. Do not get hit.', 2.5);
+      } else { G.sfx.deny(); msg('The pour needs 2 brass ore.', 2); }
+      return;
+    }
+    if (seg.stage === 2 && seg.hp < seg.maxhp && G.iron >= 1) {
+      G.iron--; seg.hp = Math.min(seg.maxhp, seg.hp + 25); G.sfx.build(); msg('Segment repaired.', 1.5);
+      return;
+    }
+  }
+
+  // --- Siwa shrine: the ram horns are earned, not given ---
+  const sh = G.world.shrine;
+  if (!sh.used && Math.abs(px - sh.x) < 22) {
+    sh.used = true; G.flags.shrine = true; G.mythos += 2;
+    G.flash = 0.9; G.flashCol = '#f3cf6b';
+    G.sfx.relic(); G.sfx.roar();
+    msg('THE ORACLE OF AMMON SPEAKS: "Son of the god."', 4.5);
+    msg('The ram horns ignite. TIER 2 skills unlocked in the menu (Q). +2 Mythos', 5);
+    return;
+  }
+
+  // --- rest at the forge-camp ---
+  if (Math.abs(px - G.world.camp.x) < 24 && p.hp < p.maxhp) {
+    p.hp = p.maxhp;
+    if (!G.waveSys.active) G.waveSys.t = Math.max(5, G.waveSys.t - 8);
+    G.sfx.pickup();
+    msg('You rest by the forge. Wounds close; the doom-clock ticks on.', 3);
+    return;
+  }
+}
+
+// per-frame world upkeep
+function updateWorld(dt) {
+  updateFront(dt);
+  updateWaves(dt);
+  for (const n of G.world.nodes) {
+    if (n.amt <= 0) { n.respawn += dt; if (n.respawn > 50) { n.respawn = 0; n.amt = 3; } }
+  }
+  // relic pickup is touch-based
+  const p = G.player;
+  for (const r of G.world.relics) {
+    if (!r.got && Math.abs(p.x + p.w / 2 - r.x) < 12 && Math.abs(p.y + p.h / 2 - r.y) < 16) {
+      r.got = true; G.mythos++; G.stats.relics++;
+      G.sfx.relic(); G.flash = 0.35; G.flashCol = '#b08fdd';
+      msg('RELIC OF MYTH RECOVERED  (+1 Mythos)', 2.5);
+    }
+  }
+  // corruption exposure drain (sandbox-survival pressure)
+  if (p.x > G.front.x) {
+    p.corrT += dt;
+    if (p.corrT > 8 && p.corrT % 2.5 < dt) {
+      damagePlayer(0.5, null);
+      msg('THE FRAYING GNAWS AT YOU', 1.5);
+    }
+  } else p.corrT = 0;
+}
+
+// ============================================================
+// SOURCE: js/actors.js
+// ============================================================
+// ============================================================
+// ISKANDER — actors: the hero, the three-tier skill tree,
+// the horde, Yajuj-Khagan, particles & pickups
+// ============================================================
+const GRAV = 640, JUMPV = -252, RUNSPD = 92, DASHV = 255;
+
+// ---------- skill tree ----------
+const SKILLS = [
+  { id: 'sarissa', tier: 1, name: 'Sarissa Lunge', cost: { doxa: 8 }, desc: 'Spear during a dash: pierce for 5, pin light foes.' },
+  { id: 'phalanx', tier: 1, name: 'Phalanx Echo', cost: { doxa: 12 }, desc: '[1] Summon 3 spectral hoplites — a mobile wall (6s).' },
+  { id: 'rebuke', tier: 1, name: "Lion's Rebuke", cost: { doxa: 10 }, desc: 'Perfect parry wounds nearby foes and reflects projectiles.' },
+  { id: 'besieger', tier: 1, name: 'Besieger', cost: { doxa: 10 }, desc: 'Sword while blocking: shield-bash breaks guards & cracked rock.' },
+  { id: 'horns', tier: 2, name: 'Horns of Ammon', cost: { mythos: 2 }, desc: '[2] Helmet-first charge: 6 dmg, smashes stone.' },
+  { id: 'disc', tier: 2, name: 'Solar Disc', cost: { mythos: 2 }, desc: 'The lion shield orbits you, auto-parrying one hit per 6s.' },
+  { id: 'whisper', tier: 2, name: 'Whisper of the Oracle', cost: { mythos: 2 }, desc: 'Time slows for a breath after every perfect parry.' },
+  { id: 'stride', tier: 2, name: 'Anointed Stride', cost: { mythos: 3 }, desc: 'Walk upon water as upon marble.' },
+  { id: 'ironverse', tier: 3, name: 'Iron Verse', cost: { doxa: 20, mythos: 2 }, desc: '[3] Slam: raise an iron rampart from the earth (12s). AGES YOU.' },
+  { id: 'brasstide', tier: 3, name: 'Brass Tide', cost: { doxa: 15, mythos: 2 }, desc: '[4] Hurl molten brass that hardens into stairs (20s). AGES YOU.' },
+  { id: 'roar', tier: 3, name: 'The Sealing Roar', cost: { doxa: 30, mythos: 4 }, desc: '[5] Petrify every foe on screen (4s). Statues yield iron. AGES YOU.' },
+];
+function tierOpen(t) {
+  if (t === 1) return true;
+  if (t === 2) return G.flags.shrine;
+  return G.flags.reachedWall;
+}
+function tierReqText(t) {
+  if (t === 2) return 'Seek the Oracle at Siwa';
+  return 'Reach the Wall at the Roof of the World';
+}
+function canAfford(s) {
+  return G.doxa >= (s.cost.doxa || 0) && G.mythos >= (s.cost.mythos || 0);
+}
+function buySkill(s) {
+  if (G.skills[s.id] || !tierOpen(s.tier) || !canAfford(s)) { G.sfx.deny(); return false; }
+  G.doxa -= s.cost.doxa || 0;
+  G.mythos -= s.cost.mythos || 0;
+  G.skills[s.id] = true;
+  G.sfx.buy();
+  msg(s.name + ' learned.', 2.5);
+  return true;
+}
+
+// ---------- player ----------
+function resetPlayer(full) {
+  const spawnX = G.flags.reachedWall ? G.world.camp.x : 70;
+  const p = G.player || {};
+  p.x = spawnX; p.y = 60; p.vx = 0; p.vy = 0;
+  p.w = 10; p.h = 22; p.face = 1;
+  p.onGround = false; p.dropT = 0;
+  p.hp = p.maxhp || 10;
+  p.inv = 0; p.hurtT = 0; p.corrT = 0;
+  p.dashT = 0; p.dashCd = 0;
+  p.atk = null; p.combo = 0; p.comboT = 0;
+  p.block = false; p.blockT = 0;
+  p.cds = { phalanx: 0, horns: 0, ironverse: 0, brasstide: 0, roar: 0 };
+  p.discCd = 0; p.charge = 0;
+  p.pour = null; p.runPhase = 0;
+  p.lastSafe = { x: spawnX, y: 60 };
+  if (full) {
+    p.maxhp = 10; p.hp = 10;
+  }
+  G.player = p;
+}
+
+function ageUp() {
+  G.age++;
+  G.player.maxhp = Math.max(7, 10 - G.age * 0.5);
+  G.player.hp = Math.min(G.player.hp, G.player.maxhp);
+  if (G.age === 1) msg('Power costs legacy. The king is older now.', 3.5);
+}
+
+function meleeHit(rect, dmg, opts) {
+  opts = opts || {};
+  let landed = false;
+  for (const e of G.enemies) {
+    if (aabb(rect, e)) {
+      hurtEnemy(e, dmg, opts);
+      landed = true;
+    }
+  }
+  const b = G.boss;
+  if (b && b.phase < 4 && aabb(rect, b)) {
+    landed = hitBoss(dmg, opts) || landed;
+  }
+  if (opts.breakRock) {
+    for (const r of G.world.rocks) {
+      if (!r.broken && aabb(rect, r)) {
+        r.hp -= 1;
+        G.sfx.mine(); G.shake = Math.max(G.shake, 2);
+        if (r.hp <= 0) {
+          r.broken = true; G.sfx.breakRock(); G.shake = 4;
+          for (let i = 0; i < 10; i++) addPart(r.x + 9, r.y + 18, (Math.random() - 0.5) * 120, -Math.random() * 90, '#7d6a55', 0.7);
+          msg('The stone yields to the Besieger.', 2.5);
+        }
+        landed = true;
+      }
+    }
+  }
+  for (const cg of G.world.cages) {
+    if (!cg.freed && aabb(rect, cg)) {
+      cg.hp -= dmg;
+      G.sfx.mine();
+      if (cg.hp <= 0) {
+        cg.freed = true; G.engineers++;
+        G.sfx.relic();
+        msg('ENGINEER CLAN FREED — builds are cheaper, pours are faster. (' + G.engineers + ')', 4);
+      }
+      landed = true;
+    }
+  }
+  if (landed) G.sfx.hit();
+  return landed;
+}
+
+function hurtEnemy(e, dmg, opts) {
+  opts = opts || {};
+  if (e.petrified > 0) {
+    e.hp -= dmg * 2;
+    if (e.hp <= 0) { G.iron++; msg('+1 iron from the statue', 1.2); }
+  } else {
+    if (e.type === 'biter' && !e.guardBroken && !opts.guardbreak && !opts.pierce) dmg *= 0.4;
+    if (e.type === 'echoborn' && e.parryCd <= 0 && !opts.unblockable) {
+      e.parryCd = 2.0;
+      e.riposte = 0.25;
+      G.sfx.parry();
+      addPart(e.x + e.w / 2, e.y + 6, e.facing * 40, -20, '#39ff6a', 0.3);
+      return;
+    }
+    e.hp -= dmg;
+    e.vx += (opts.kb || 60) * (G.player.face);
+    if (opts.stun) e.stun = Math.max(e.stun, opts.stun);
+    if (opts.guardbreak) e.guardBroken = true;
+  }
+  addPart(e.x + e.w / 2, e.y + e.h / 2, (Math.random() - 0.5) * 80, -40, '#b03cff', 0.4);
+  if (e.hp <= 0) enemyDie(e);
+}
+
+function damagePlayer(d, from) {
+  const p = G.player;
+  if (G.state !== 'play') return;
+  if (p.inv > 0 || p.dashT > 0.06) return;
+  const fromFront = from == null || ((from.x > p.x) === (p.face === 1));
+
+  if (p.block && fromFront) {
+    if (p.blockT < 0.14) {
+      // PERFECT PARRY — the lion roars
+      p.inv = 0.45;
+      G.sfx.parry();
+      G.shake = 6; G.flash = 0.25; G.flashCol = '#f3cf6b';
+      if (G.skills.whisper) G.slowT = 0.55;
+      const r = G.skills.rebuke ? 70 : 50;
+      for (const e of G.enemies) {
+        if (dist(e.x, e.y, p.x, p.y) < r) {
+          e.stun = Math.max(e.stun, 1.5);
+          if (G.skills.rebuke) { e.hp -= 3; if (e.hp <= 0) enemyDie(e); }
+        }
+      }
+      if (G.skills.rebuke) {
+        for (const pr of G.projectiles) {
+          if (!pr.friendly && dist(pr.x, pr.y, p.x, p.y) < 70) { pr.friendly = true; pr.vx *= -1.4; pr.vy *= -0.5; pr.dmg = 4; }
+        }
+      }
+      if (G.boss && dist(G.boss.x + G.boss.w / 2, G.boss.y, p.x, p.y) < 80) {
+        G.boss.stun = Math.max(G.boss.stun || 0, G.boss.phase === 3 ? 1.2 : 1.5);
+      }
+      return;
+    }
+    p.hp -= d * 0.25;
+    p.inv = 0.3;
+    G.sfx.hit();
+    if (p.hp <= 0) playerDie();
+    return;
+  }
+  if (G.skills.disc && p.discCd <= 0) {
+    p.discCd = 6;
+    G.sfx.parry();
+    addPart(p.x, p.y, 0, -40, '#f3cf6b', 0.5);
+    msg('The Solar Disc turns the blow.', 1.5);
+    return;
+  }
+  p.hp -= d;
+  p.inv = 0.8; p.hurtT = 0.3;
+  p.pour = null;
+  G.sfx.hurt(); G.shake = Math.max(G.shake, 3);
+  if (from) p.vx = (p.x < from.x ? -1 : 1) * 120;
+  if (p.hp <= 0) playerDie();
+}
+
+function playerDie() {
+  const p = G.player;
+  G.iron = Math.floor(G.iron / 2);
+  if (G.boss) { G.boss = null; G.seal = null; G.waveSys.bossNext = true; G.waveSys.bossT = 20; }
+  resetPlayer(false);
+  p.hp = p.maxhp;
+  G.flash = 0.8; G.flashCol = '#1a1015';
+  msg('You fall... and wake at the camp. Half your iron is lost.', 4);
+}
+
+function castSkill(slot) {
+  const p = G.player;
+  if (slot === 'phalanx' && G.skills.phalanx && p.cds.phalanx <= 0) {
+    p.cds.phalanx = 14;
+    for (let i = 1; i <= 3; i++) {
+      G.echoes.push({ x: p.x + p.face * (10 + i * 12), y: p.y, life: 6, hp: 10, segI: -1 });
+    }
+    G.sfx.build();
+    msg('PHALANX ECHO — the line holds.', 1.5);
+  }
+  if (slot === 'horns' && G.skills.horns && p.cds.horns <= 0) {
+    p.cds.horns = 9;
+    p.charge = 0.45;
+    p.atk = null;
+    G.sfx.roar();
+  }
+  if (slot === 'ironverse' && G.skills.ironverse && p.cds.ironverse <= 0) {
+    p.cds.ironverse = 16;
+    const rx = p.x + p.face * 20;
+    const gy = terrainY(rx + 4, false);
+    if (gy < 900) {
+      G.ramparts.push({ x: rx, y: gy - 40, w: 8, h: 40, hp: 50, life: 12 });
+      G.shake = 4; G.sfx.build(); ageUp();
+    }
+  }
+  if (slot === 'brasstide' && G.skills.brasstide && p.cds.brasstide <= 0) {
+    p.cds.brasstide = 14;
+    for (let i = 1; i <= 5; i++) {
+      G.brassPlats.push({ x: p.x + p.face * (12 + i * 16), y: p.y + 10 - i * 11, w: 16, h: 4, life: 20 });
+    }
+    G.sfx.pour(); ageUp();
+  }
+  if (slot === 'roar' && G.skills.roar && p.cds.roar <= 0) {
+    p.cds.roar = 45;
+    G.sfx.petrify(); G.sfx.roar();
+    G.shake = 8; G.flash = 0.6; G.flashCol = '#f3cf6b';
+    for (const e of G.enemies) {
+      if (Math.abs(e.x - p.x) < 300) { e.petrified = 4; e.vx = 0; }
+    }
+    ageUp();
+    msg('THE SEALING ROAR — flesh becomes statuary.', 3);
+  }
+}
+
+function updatePlayer(dt) {
+  const p = G.player;
+  p.inv = Math.max(0, p.inv - dt);
+  p.hurtT = Math.max(0, p.hurtT - dt);
+  p.dashCd = Math.max(0, p.dashCd - dt);
+  p.discCd = Math.max(0, p.discCd - dt);
+  p.comboT = Math.max(0, p.comboT - dt);
+  p.dropT = Math.max(0, p.dropT - dt);
+  for (const k in p.cds) p.cds[k] = Math.max(0, p.cds[k] - dt);
+
+  // blocking
+  const wasBlock = p.block;
+  p.block = G.keys.shield && !p.atk && p.charge <= 0;
+  p.blockT = p.block ? (wasBlock ? p.blockT + dt : 0) : 0;
+
+  // movement intent
+  let mv = 0;
+  if (G.keys.left) mv = -1;
+  if (G.keys.right) mv = 1;
+  if (mv !== 0 && !p.block) p.face = mv;
+
+  if (G.pressed.dash && p.dashCd <= 0 && p.charge <= 0) {
+    p.dashT = 0.18; p.dashCd = 1.1;
+    G.sfx.dash();
+  }
+  p.dashT = Math.max(0, p.dashT - dt);
+  p.charge = Math.max(0, p.charge - dt);
+
+  let spd = RUNSPD;
+  if (p.block) spd *= 0.4;
+  if (p.dashT > 0) { p.vx = p.face * DASHV; }
+  else if (p.charge > 0) { p.vx = p.face * 300; }
+  else p.vx = mv * spd + (p.hurtT > 0 ? p.vx * 0.5 : 0);
+
+  if (mv !== 0 && p.onGround) p.runPhase += dt * 11;
+
+  // jump / drop
+  if (G.pressed.jump) {
+    if (G.keys.down && p.onGround) { p.dropT = 0.22; p.vy = 30; p.onGround = false; }
+    else if (p.onGround) { p.vy = JUMPV; p.onGround = false; G.sfx.jump(); }
+  }
+
+  // attacks
+  if (!p.atk && p.charge <= 0) {
+    if (G.pressed.sword) {
+      if (p.block && G.skills.besieger) {
+        p.atk = { kind: 'bash', t: 0, dur: 0.25, did: false };
+      } else if (!p.block) {
+        if (p.comboT <= 0) p.combo = 0;
+        p.atk = { kind: 'sword', t: 0, dur: 0.26, idx: p.combo, did: false };
+        p.combo = (p.combo + 1) % 3;
+        p.comboT = 0.55;
+        G.sfx.swing();
+      }
+    } else if (G.pressed.spear && !p.block) {
+      if (p.dashT > 0 && G.skills.sarissa) p.atk = { kind: 'lunge', t: 0, dur: 0.3, did: false };
+      else p.atk = { kind: 'spear', t: 0, dur: 0.32, did: false };
+      G.sfx.swing();
+    }
+  }
+  if (p.atk) {
+    p.atk.t += dt;
+    const a = p.atk;
+    if (!a.did && a.t > a.dur * 0.35) {
+      a.did = true;
+      const fx = p.face;
+      if (a.kind === 'sword') {
+        const dmg = [2, 2, 3][a.idx];
+        meleeHit({ x: p.x + (fx === 1 ? p.w : -16), y: p.y + 2, w: 16, h: 18 }, dmg, { kb: a.idx === 2 ? 140 : 60 });
+      } else if (a.kind === 'spear') {
+        meleeHit({ x: p.x + (fx === 1 ? p.w : -26), y: p.y + 6, w: 26, h: 8 }, 3, { kb: 40, pierce: true });
+      } else if (a.kind === 'lunge') {
+        meleeHit({ x: p.x + (fx === 1 ? p.w : -30), y: p.y + 4, w: 30, h: 12 }, 5, { kb: 200, stun: 1.2, pierce: true, unblockable: true });
+      } else if (a.kind === 'bash') {
+        meleeHit({ x: p.x + (fx === 1 ? p.w : -14), y: p.y, w: 14, h: 20 }, 1, { kb: 120, guardbreak: true, stun: 1, breakRock: true });
+        G.shake = Math.max(G.shake, 2);
+      }
+    }
+    if (a.t >= a.dur) p.atk = null;
+  }
+  // Horns of Ammon charge collisions (continuous)
+  if (p.charge > 0) {
+    meleeHit({ x: p.x + (p.face === 1 ? p.w : -12), y: p.y, w: 12, h: 20 }, 6 * dt * 6, { kb: 180, stun: 0.8, guardbreak: true, breakRock: true, unblockable: true });
+  }
+
+  // actives
+  if (G.pressed.s1) castSkill('phalanx');
+  if (G.pressed.s2) castSkill('horns');
+  if (G.pressed.s3) castSkill('ironverse');
+  if (G.pressed.s4) castSkill('brasstide');
+  if (G.pressed.s5) castSkill('roar');
+
+  // garrison: turn an Echo into infrastructure
+  if (G.pressed.garrison && G.skills.phalanx) {
+    const seg = nearestSeg(p.x + p.w / 2);
+    if (seg && seg.stage > 0 && !seg.garrison) {
+      if (G.doxa >= 12) {
+        G.doxa -= 12; seg.garrison = true;
+        G.echoes.push({ x: seg.x + seg.w / 2, y: seg.top - 20, life: 1e9, hp: 25, segI: seg.i });
+        G.sfx.build();
+        msg('ECHO GARRISON — the soldier becomes the stone.', 3);
+      } else { G.sfx.deny(); msg('Garrison costs 12 Doxa.', 2); }
+    }
+  }
+
+  // ---- physics ----
+  const walkWater = !!G.skills.stride;
+  let nx = p.x + p.vx * dt;
+  const probe = { x: nx, y: p.y, w: p.w, h: p.h };
+  const gAhead = Math.min(terrainY(nx + 2, walkWater), terrainY(nx + p.w - 2, walkWater));
+  const stepLimit = p.onGround ? 13 : 4;
+  let blocked = gAhead < p.y + p.h - stepLimit;
+  for (const r of solidRocks()) {
+    if (aabb(probe, r) && !aabb(p, r)) blocked = true;
+  }
+  if (blocked) { nx = p.x; if (p.dashT <= 0 && p.charge <= 0) p.vx = 0; }
+  if (nx < 4) nx = 4;
+  if (nx > WORLD_W - 14) nx = WORLD_W - 14;
+  p.x = nx;
+
+  p.vy += GRAV * dt;
+  if (p.vy > 320) p.vy = 320;
+  const prevFeet = p.y + p.h;
+  p.y += p.vy * dt;
+  p.onGround = false;
+
+  let gy = Math.min(terrainY(p.x + 2, walkWater), terrainY(p.x + p.w - 2, walkWater));
+  if (p.dropT <= 0) {
+    const all = G.world.plats.concat(G.brassPlats);
+    for (const pl of all) {
+      if (p.x + p.w > pl.x && p.x < pl.x + pl.w && prevFeet <= pl.y + 1 && p.y + p.h >= pl.y && p.vy >= 0) {
+        if (pl.y < gy) gy = pl.y;
+      }
+    }
+  }
+  if (p.vy >= 0 && p.y + p.h >= gy) {
+    p.y = gy - p.h; p.vy = 0; p.onGround = true;
+    if (gy < 900 && !G.world.water[Math.floor((p.x + p.w / 2) / TS)]) {
+      p.lastSafe.x = p.x; p.lastSafe.y = p.y - 4;
+    }
+  }
+  // step-up snap when walking small rises
+  const gNow = Math.min(terrainY(p.x + 2, walkWater), terrainY(p.x + p.w - 2, walkWater));
+  if (p.onGround && p.y + p.h > gNow && p.y + p.h - gNow <= 13) { p.y = gNow - p.h; }
+
+  // fell into water / pit
+  if (p.y > G.H + 30) {
+    damagePlayer(1, null);
+    p.x = p.lastSafe.x; p.y = p.lastSafe.y; p.vx = 0; p.vy = 0;
+    addPart(p.x, p.y + 20, 0, -60, '#7ec0d8', 0.6);
+  }
+
+  // first arrival at the Wall
+  if (!G.flags.reachedWall && p.x > G.wall.x0 - 160) {
+    G.flags.reachedWall = true;
+    G.flash = 0.5; G.flashCol = '#dfe8ef';
+    G.sfx.wave();
+    msg('THE ROOF OF THE WORLD. Here the map ends and myth begins.', 5);
+    msg('Build the Wall: E at a foundation (4 iron). The horde comes on a doom-clock.', 6);
+    msg('TIER 3 skills unlocked in the menu (Q).', 4);
+  }
+
+  tryInteract(p, dt);
+}
+
+// ---------- enemies ----------
+const ETYPES = {
+  numberless: { hp: 3, spd: 42, dmg: 0.5, w: 6, h: 6, doxa: 1 },
+  licker: { hp: 8, spd: 72, dmg: 1, w: 16, h: 8, doxa: 3 },
+  biter: { hp: 26, spd: 26, dmg: 1.5, w: 18, h: 12, doxa: 6 },
+  echoborn: { hp: 30, spd: 60, dmg: 1.5, w: 10, h: 22, doxa: 12 },
+};
+function spawnEnemy(type, x, waveTag) {
+  const t = ETYPES[type];
+  const e = {
+    type: type, x: x, y: terrainY(x, true) - t.h - 2, vx: 0, vy: 0,
+    w: t.w, h: t.h, hp: t.hp + (G.waveSys ? G.waveSys.wave * (type === 'numberless' ? 0.5 : 1.5) : 0),
+    spd: t.spd * (0.85 + Math.random() * 0.3), dmg: t.dmg,
+    stun: 0, petrified: 0, touchCd: 0, facing: -1,
+    waveTag: !!waveTag, guardBroken: false, parryCd: 0, riposte: 0,
+    seed: Math.random() * 100, lungeT: 0, atkT: 0,
+  };
+  G.enemies.push(e);
+  return e;
+}
+function enemyDie(e) {
+  const i = G.enemies.indexOf(e);
+  if (i >= 0) G.enemies.splice(i, 1);
+  G.stats.kills++;
+  const t = ETYPES[e.type];
+  for (let k = 0; k < t.doxa; k++) addOrb(e.x + e.w / 2, e.y, 1);
+  if (e.type === 'biter' && Math.random() < 0.35) { G.iron++; msg('+1 iron from the Wall-Biter shell', 1.5); }
+  if (Math.random() < 0.08) addOrb(e.x, e.y, 0, true);
+  for (let k = 0; k < 6; k++) addPart(e.x + e.w / 2, e.y + e.h / 2, (Math.random() - 0.5) * 100, -Math.random() * 80, Math.random() < 0.5 ? '#39ff6a' : '#b03cff', 0.6);
+}
+
+function updateEnemies(dt) {
+  const p = G.player;
+  const blockers = enemyBlockers();
+  for (let i = G.enemies.length - 1; i >= 0; i--) {
+    const e = G.enemies[i];
+    e.touchCd = Math.max(0, e.touchCd - dt);
+    e.parryCd = Math.max(0, e.parryCd - dt);
+    if (e.petrified > 0) { e.petrified -= dt; continue; }
+    if (e.stun > 0) { e.stun -= dt; e.vx *= 0.85; continue; }
+
+    // pick target: the player if near (or post-wall), else the Wall, else march west
+    let tx = null, wallTarget = null;
+    const pd = Math.abs(p.x - e.x);
+    if (e.type === 'biter') {
+      let best = null, bd = 1e9;
+      for (const s of G.wall.segs) {
+        if (s.stage > 0) { const d = Math.abs(s.x + s.w / 2 - e.x); if (d < bd) { bd = d; best = s; } }
+      }
+      if (best && pd > 60) { wallTarget = best; tx = best.x + best.w / 2; }
+      else tx = p.x;
+    } else {
+      tx = (pd < 160 || e.x < G.wall.x0) ? p.x : (e.waveTag ? e.x - 50 : p.x);
+    }
+    const dir = tx < e.x ? -1 : 1;
+    e.facing = dir;
+
+    // blocked by walls / ramparts / hoplites → chew on them
+    let chewing = null;
+    const aheadX = dir === -1 ? e.x - 3 : e.x + e.w + 3;
+    for (const b of blockers) {
+      if (aheadX > b.x && aheadX < b.x + b.w && e.y + e.h > b.y && e.y < b.y + b.h) { chewing = b; break; }
+    }
+    if (chewing) {
+      e.vx = 0;
+      const dps = e.type === 'biter' ? 9 : e.type === 'numberless' ? 0.8 : 2.5;
+      if (chewing.kind === 'seg') damageSeg(chewing.ref, dps * dt);
+      else chewing.ref.hp -= dps * dt;
+      if (Math.random() < dt * 6) addPart(aheadX, e.y + e.h / 2, -dir * 30, -20, '#8a93a0', 0.3);
+    } else {
+      // movement flavor per archetype
+      if (e.type === 'licker') {
+        e.lungeT -= dt;
+        if (pd < 90 && e.lungeT <= 0 && Math.abs(p.y - e.y) < 30) { e.vx = dir * e.spd * 2.4; e.lungeT = 1.6; }
+        else if (e.lungeT < 1.2) e.vx = dir * e.spd * 0.7;
+      } else if (e.type === 'echoborn') {
+        e.atkT -= dt;
+        if (e.riposte > 0) {
+          e.riposte -= dt;
+          if (e.riposte <= 0 && pd < 30) damagePlayer(1.5, e);
+        }
+        if (pd < 26 && e.atkT <= 0) {
+          e.atkT = 1.1;
+          if (Math.abs(p.y + p.h - (e.y + e.h)) < 26) damagePlayer(e.dmg, e);
+        } else if (pd < 110 && pd > 40 && e.atkT <= 0 && Math.random() < dt * 1.2) {
+          e.vx = dir * 240; e.atkT = 0.9; // a corrupted Sarissa Lunge
+        } else e.vx = lerp(e.vx, dir * e.spd, 0.1);
+      } else {
+        e.vx = lerp(e.vx, dir * e.spd, 0.15);
+      }
+    }
+
+    // physics (enemies walk water columns — the horde drinks rivers dry)
+    e.vy += GRAV * dt;
+    if (e.vy > 300) e.vy = 300;
+    e.x += e.vx * dt;
+    e.x = clamp(e.x, 4, WORLD_W - 10);
+    e.y += e.vy * dt;
+    const gy = terrainY(e.x + e.w / 2, true);
+    if (e.y + e.h >= gy) {
+      e.y = gy - e.h; e.vy = 0;
+      // the Numberless climb over obstacles as a rising tide
+      if (chewing && e.type === 'numberless' && Math.random() < dt * 1.5) e.vy = -180;
+    }
+
+    // touch damage
+    if (e.touchCd <= 0 && aabb(e, p)) {
+      e.touchCd = 0.8;
+      damagePlayer(e.dmg, e);
+    }
+    if (e.y > G.H + 60) G.enemies.splice(i, 1);
+  }
+
+  // hoplite echoes poke back
+  for (let i = G.echoes.length - 1; i >= 0; i--) {
+    const ec = G.echoes[i];
+    ec.life -= dt;
+    if (ec.life <= 0 || ec.hp <= 0) { G.echoes.splice(i, 1); continue; }
+    for (const e of G.enemies) {
+      if (Math.abs(e.x - ec.x) < 26 && Math.abs(e.y - ec.y) < 26 && Math.random() < dt * 2.5) {
+        e.hp -= 2;
+        addPart(e.x, e.y, 0, -30, '#dfe8ef', 0.3);
+        if (e.hp <= 0) enemyDie(e);
+      }
+    }
+  }
+}
+
+// ---------- BOSS: YAJUJ-KHAGAN, THE MOUTH OF THE EAST ----------
+function startBoss() {
+  G.waveSys.bossNext = false;
+  const gx = G.wall.gateX;
+  G.boss = {
+    phase: 1, hp: 130, maxhp: 130,
+    x: gx + 150, y: 60, vx: 0, vy: 0, w: 52, h: 40,
+    state: 'enter', stateT: 2.2, t: 0, stun: 0,
+    aflame: 0, parryCd: 0, hinted: false, spawnT: 6,
+    name: 'YAJUJ-KHAGAN, THE MOUTH OF THE EAST',
+  };
+  G.sfx.bossRoar();
+  G.shake = 8;
+  msg('YAJUJ-KHAGAN — THE MOUTH OF THE EAST', 5);
+}
+
+function hitBoss(dmg, opts) {
+  const b = G.boss;
+  if (!b) return false;
+  if (b.phase === 2 && b.aflame <= 0) {
+    if (!b.hinted) { b.hinted = true; msg('The swarm reforms! Only FIRE makes it commit — lure him to the gate braziers!', 5); }
+    addPart(b.x + b.w / 2, b.y + 10, (Math.random() - 0.5) * 60, -30, '#39ff6a', 0.3);
+    return false;
+  }
+  if (b.phase === 3 && b.parryCd <= 0 && !(opts && opts.unblockable)) {
+    b.parryCd = 1.8;
+    b.counter = 0.3;
+    G.sfx.parry();
+    msg('He parries like you do. Feint — strike twice.', 2);
+    return false;
+  }
+  b.hp -= dmg;
+  addPart(b.x + b.w / 2, b.y + b.h / 2, (Math.random() - 0.5) * 100, -50, '#ff3963', 0.5);
+  if (b.hp <= 0) bossPhaseEnd();
+  return true;
+}
+
+function bossPhaseEnd() {
+  const b = G.boss;
+  G.shake = 8; G.flash = 0.4; G.flashCol = '#b03cff';
+  G.sfx.bossRoar();
+  if (b.phase === 1) {
+    b.phase = 2; b.hp = 100; b.maxhp = 100;
+    b.w = 26; b.h = 34; b.state = 'drift'; b.stateT = 1.5;
+    for (let i = 0; i < 10; i++) spawnEnemy('numberless', b.x + (Math.random() - 0.5) * 60, false);
+    msg('THE SWARM CROWN — he was never one thing.', 4);
+  } else if (b.phase === 2) {
+    b.phase = 3; b.hp = 110; b.maxhp = 110;
+    b.w = 10; b.h = 22; b.state = 'duel'; b.stateT = 1; b.parryCd = 0;
+    b.y = 60;
+    msg('THE FALSE ISKANDER — the horde has learned to be you.', 4);
+  } else if (b.phase === 3) {
+    b.phase = 4; b.hp = 1; b.maxhp = 1;
+    G.seal = { t: 0, need: Math.max(5, 8 - G.engineers), spawnT: 0 };
+    msg('THE SEALING — you do not fight a flood. You BUILD. Hold E at the gate!', 6);
+  }
+}
+
+function updateBoss(dt) {
+  const b = G.boss;
+  if (!b) return;
+  const p = G.player;
+  const gx = G.wall.gateX;
+  b.t += dt;
+  b.stun = Math.max(0, (b.stun || 0) - dt);
+  b.parryCd = Math.max(0, b.parryCd - dt);
+  b.aflame = Math.max(0, b.aflame - dt);
+
+  // gravity for phases that walk
+  b.vy += GRAV * dt;
+  if (b.vy > 320) b.vy = 320;
+  b.y += b.vy * dt;
+  const gy = terrainY(b.x + b.w / 2, true);
+  let grounded = false;
+  if (b.y + b.h >= gy) { b.y = gy - b.h; b.vy = 0; grounded = true; }
+  b.x += b.vx * dt;
+  b.x = clamp(b.x, gx - 290, gx + 290);
+
+  if (b.stun > 0) { b.vx *= 0.8; return; }
+
+  if (b.phase === 4) {
+    // The Sealing: hold the gate while the tide pours in
+    const s = G.seal;
+    s.spawnT -= dt;
+    let alive = 0;
+    for (const e of G.enemies) if (e.type === 'numberless') alive++;
+    if (s.spawnT <= 0 && alive < 14) {
+      s.spawnT = 0.7;
+      spawnEnemy('numberless', gx + 250 + Math.random() * 80, false);
+    }
+    if (G.keys.use && Math.abs(p.x + p.w / 2 - gx) < 22) {
+      s.t += dt;
+      if (Math.random() < 0.5) addPart(gx + (Math.random() - 0.5) * 16, 150 + Math.random() * 20, 0, -40, '#f3a33c', 0.4);
+      if (s.t >= s.need) {
+        // entombed forever, mid-lunge
+        G.flags.bossDone = true;
+        G.boss = null; G.seal = null;
+        G.enemies.length = 0;
+        G.flash = 1; G.flashCol = '#f3cf6b';
+        G.sfx.pour(); G.sfx.bossRoar(); G.sfx.relic();
+        G.shake = 10;
+        msg('THE BRASS HARDENS. THE MOUTH OF THE EAST IS SEALED IN THE WALL.', 6);
+        G.choiceT = 3;
+      }
+    }
+    return;
+  }
+
+  b.stateT -= dt;
+  const pd = p.x - (b.x + b.w / 2);
+
+  if (b.phase === 1) {
+    // The Rider: charge, spear-rain, ground-pound
+    if (b.state === 'enter' && b.stateT <= 0) { b.state = 'idle'; b.stateT = 1; }
+    else if (b.state === 'idle' && b.stateT <= 0) {
+      const r = Math.random();
+      if (Math.abs(pd) > 120 && r < 0.5) { b.state = 'telegraph'; b.stateT = 0.55; b.chargeDir = pd > 0 ? 1 : -1; }
+      else if (r < 0.75) { b.state = 'rain'; b.stateT = 0.8; b.rained = false; }
+      else { b.state = 'pound'; b.stateT = 0.6; b.vy = -180; b.pounded = false; }
+      b.vx = 0;
+    }
+    else if (b.state === 'telegraph' && b.stateT <= 0) { b.state = 'charge'; b.stateT = 0.9; b.vx = b.chargeDir * 250; G.sfx.dash(); }
+    else if (b.state === 'charge') {
+      if (Math.abs(p.y + p.h - (b.y + b.h)) < 40 && Math.abs(pd) < b.w / 2 + 6 && p.inv <= 0) damagePlayer(2, b);
+      if (b.stateT <= 0) { b.state = 'idle'; b.stateT = 1.2; b.vx = 0; }
+    }
+    else if (b.state === 'rain') {
+      if (!b.rained && b.stateT < 0.4) {
+        b.rained = true;
+        for (let i = 0; i < 6; i++) {
+          G.projectiles.push({ x: p.x - 60 + i * 22 + Math.random() * 8, y: 4, vx: 0, vy: 200 + Math.random() * 40, dmg: 1, friendly: false, kind: 'spear' });
+        }
+        G.sfx.swing();
+      }
+      if (b.stateT <= 0) { b.state = 'idle'; b.stateT = 1; }
+    }
+    else if (b.state === 'pound') {
+      if (!b.pounded && grounded && b.stateT < 0.3) {
+        b.pounded = true;
+        G.shake = 6; G.sfx.bossRoar();
+        G.projectiles.push({ x: b.x, y: gy - 8, vx: -160, vy: 0, dmg: 1, friendly: false, kind: 'shock', life: 1.6 });
+        G.projectiles.push({ x: b.x + b.w, y: gy - 8, vx: 160, vy: 0, dmg: 1, friendly: false, kind: 'shock', life: 1.6 });
+      }
+      if (b.stateT <= 0) { b.state = 'idle'; b.stateT = 1.1; }
+    }
+  }
+
+  if (b.phase === 2) {
+    // Swarm Crown: invulnerable unless burning at a brazier
+    for (const bx of G.world.braziers) {
+      if (Math.abs(b.x + b.w / 2 - bx) < 40) { b.aflame = 1.4; }
+    }
+    if (b.aflame > 0 && Math.random() < dt * 8) addPart(b.x + Math.random() * b.w, b.y + Math.random() * b.h, 0, -60, '#f3a33c', 0.4);
+    b.spawnT -= dt;
+    if (b.spawnT <= 0) { b.spawnT = 7; for (let i = 0; i < 3; i++) spawnEnemy('numberless', b.x + (Math.random() - 0.5) * 40, false); }
+    if (b.state === 'drift') {
+      b.vx = lerp(b.vx, (pd > 0 ? 1 : -1) * 55, 0.06);
+      if (b.stateT <= 0 && Math.abs(pd) < 130) { b.state = 'lunge'; b.stateT = 0.5; b.vx = (pd > 0 ? 1 : -1) * 260; }
+    } else if (b.state === 'lunge') {
+      if (Math.abs(pd) < b.w / 2 + 6 && Math.abs(p.y - b.y) < 30) damagePlayer(1.5, b);
+      if (b.stateT <= 0) { b.state = 'drift'; b.stateT = 2 + Math.random(); }
+    }
+  }
+
+  if (b.phase === 3) {
+    // False Iskander: a 1v1 duel against your own kit
+    if (b.counter && b.counter > 0) {
+      b.counter -= dt;
+      if (b.counter <= 0 && Math.abs(pd) < 30) damagePlayer(1.5, b);
+    }
+    if (b.state === 'duel') {
+      b.vx = lerp(b.vx, (Math.abs(pd) > 24 ? (pd > 0 ? 1 : -1) * 75 : 0), 0.12);
+      if (b.stateT <= 0) {
+        const r = Math.random();
+        if (Math.abs(pd) < 34 && r < 0.6) { b.state = 'combo'; b.stateT = 0.5; b.struck = false; }
+        else if (Math.abs(pd) < 130 && r < 0.85) { b.state = 'dashthrust'; b.stateT = 0.4; b.vx = (pd > 0 ? 1 : -1) * 270; b.struck = false; }
+        else b.stateT = 0.5;
+      }
+    } else if (b.state === 'combo') {
+      if (!b.struck && b.stateT < 0.3) {
+        b.struck = true;
+        if (Math.abs(pd) < 34 && Math.abs(p.y + p.h - (b.y + b.h)) < 26) damagePlayer(1.5, b);
+      }
+      if (b.stateT <= 0) { b.state = 'duel'; b.stateT = 0.7 + Math.random() * 0.5; }
+    } else if (b.state === 'dashthrust') {
+      if (!b.struck && Math.abs(pd) < 24) { b.struck = true; damagePlayer(2, b); }
+      if (b.stateT <= 0) { b.state = 'duel'; b.stateT = 0.8; b.vx = 0; }
+    }
+  }
+}
+
+// ---------- particles / orbs / projectiles / structures ----------
+function addPart(x, y, vx, vy, col, life) {
+  if (G.particles.length > 220) G.particles.shift();
+  G.particles.push({ x: x, y: y, vx: vx, vy: vy, col: col, life: life, t: 0 });
+}
+function addOrb(x, y, val, heart) {
+  G.orbs.push({ x: x, y: y, vx: (Math.random() - 0.5) * 80, vy: -80 - Math.random() * 40, val: val, heart: !!heart, t: 0 });
+}
+function updateMisc(dt) {
+  const p = G.player;
+  for (let i = G.particles.length - 1; i >= 0; i--) {
+    const pt = G.particles[i];
+    pt.t += dt;
+    pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vy += 300 * dt;
+    if (pt.t > pt.life) G.particles.splice(i, 1);
+  }
+  for (let i = G.orbs.length - 1; i >= 0; i--) {
+    const o = G.orbs[i];
+    o.t += dt;
+    const d = dist(o.x, o.y, p.x + p.w / 2, p.y + p.h / 2);
+    if (d < 50) {
+      o.vx = lerp(o.vx, (p.x + p.w / 2 - o.x) * 8, 0.3);
+      o.vy = lerp(o.vy, (p.y + p.h / 2 - o.y) * 8, 0.3);
+    } else { o.vy += 260 * dt; }
+    o.x += o.vx * dt; o.y += o.vy * dt;
+    const gy = terrainY(o.x, true);
+    if (o.y > gy - 3) { o.y = gy - 3; o.vy *= -0.4; o.vx *= 0.9; }
+    if (d < 10) {
+      if (o.heart) { p.hp = Math.min(p.maxhp, p.hp + 1); }
+      else G.doxa += o.val;
+      G.sfx.pickup();
+      G.orbs.splice(i, 1);
+    } else if (o.t > 12) G.orbs.splice(i, 1);
+  }
+  for (let i = G.projectiles.length - 1; i >= 0; i--) {
+    const pr = G.projectiles[i];
+    pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+    if (pr.life != null) { pr.life -= dt; if (pr.life <= 0) { G.projectiles.splice(i, 1); continue; } }
+    if (pr.kind === 'shock') {
+      pr.y = terrainY(pr.x, true) - 8;
+    }
+    if (!pr.friendly && aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, p)) {
+      damagePlayer(pr.dmg, pr);
+      G.projectiles.splice(i, 1);
+      continue;
+    }
+    if (pr.friendly) {
+      let used = false;
+      for (const e of G.enemies) {
+        if (aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, e)) { hurtEnemy(e, pr.dmg, {}); used = true; break; }
+      }
+      if (!used && G.boss && G.boss.phase < 4 && aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, G.boss)) { hitBoss(pr.dmg, {}); used = true; }
+      if (used) { G.projectiles.splice(i, 1); continue; }
+    }
+    if (pr.kind === 'spear' && pr.y > terrainY(pr.x, true)) { G.projectiles.splice(i, 1); continue; }
+    if (pr.x < 0 || pr.x > WORLD_W || pr.y > G.H + 40) G.projectiles.splice(i, 1);
+  }
+  for (let i = G.ramparts.length - 1; i >= 0; i--) {
+    const r = G.ramparts[i];
+    r.life -= dt;
+    if (r.life <= 0 || r.hp <= 0) {
+      for (let k = 0; k < 6; k++) addPart(r.x + 4, r.y + 20, (Math.random() - 0.5) * 80, -40, '#8a93a0', 0.5);
+      G.ramparts.splice(i, 1);
+    }
+  }
+  for (let i = G.brassPlats.length - 1; i >= 0; i--) {
+    const bp = G.brassPlats[i];
+    bp.life -= dt;
+    if (bp.life <= 0) G.brassPlats.splice(i, 1);
+  }
+}
+
+// ============================================================
+// SOURCE: js/render.js
+// ============================================================
+// ============================================================
+// ISKANDER — render: parallax acts, the Fraying, sprites, UI
+// ============================================================
+function FR(x, y, w, h, c) {
+  G.ctx.fillStyle = c;
+  G.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+const HPAL = {
+  helm1: '#8a5a18', helm2: '#c9912f', helm3: '#f3cf6b',
+  skin: '#e0a878', skin2: '#a8704c', hair: '#4a2f1b',
+  cuir: '#c9912f', cuirHi: '#f3cf6b', cuirSh: '#8a5a18',
+  cloak: '#d8b56f', cloak2: '#a5854a', tunic: '#f4ead2',
+  sh1: '#5b3a1e', sh2: '#9c6b30', lion: '#f3cf6b',
+  spear: '#6b4a2a', tip: '#e8e3d0', blade: '#dfe3e8', greave: '#c9912f',
+};
+const GPAL = {
+  helm1: '#101318', helm2: '#1c222c', helm3: '#39ff6a',
+  skin: '#7a8a7d', skin2: '#566057', hair: '#1c222c',
+  cuir: '#2a2433', cuirHi: '#b03cff', cuirSh: '#16121d',
+  cloak: '#3a2f4a', cloak2: '#241d30', tunic: '#566057',
+  sh1: '#1c222c', sh2: '#2a2433', lion: '#ff3963',
+  spear: '#2a2433', tip: '#39ff6a', blade: '#b03cff', greave: '#2a2433',
+};
+
+// the hero (and everything that mimics him)
+function drawHero(p, opts) {
+  opts = opts || {};
+  const ctx = G.ctx;
+  const pal = Object.assign({}, opts.pal || HPAL);
+  if (!opts.pal && G.age > 0) pal.hair = mixc('#4a2f1b', '#cfcfcf', clamp(G.age / 8, 0, 1));
+  const glitch = opts.glitch;
+  const horns = opts.horns != null ? opts.horns : G.flags.shrine;
+  ctx.save();
+  ctx.translate(Math.round(p.x + p.w / 2), Math.round(p.y));
+  ctx.scale(p.face || 1, 1);
+  if (opts.scale) ctx.scale(opts.scale, opts.scale);
+  function R2(x, y, w, h, c) {
+    if (glitch && Math.random() < 0.18) {
+      x += Math.floor(Math.random() * 3) - 1;
+      if (Math.random() < 0.3) c = Math.random() < 0.5 ? '#39ff6a' : '#b03cff';
+    }
+    ctx.fillStyle = c;
+    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  }
+  const atk = p.atk || null;
+  const moving = Math.abs(p.vx || 0) > 5;
+  const legA = moving ? Math.round(Math.sin(p.runPhase || 0) * 2) : 0;
+
+  // cloak (ochre, flutters when moving)
+  const fl = moving ? Math.round(Math.sin((G.time || 0) * 9) * 1.5) : 0;
+  R2(-8, 4, 3, 14 + fl, pal.cloak);
+  R2(-7, 4, 2, 12, pal.cloak2);
+
+  // back arm shield (front when blocking)
+  if (!p.block && atk == null) {
+    R2(-7, 7, 6, 6, pal.sh2);
+    R2(-6, 8, 4, 4, pal.sh1);
+    R2(-5, 9, 2, 2, pal.lion);
+  }
+
+  // legs + greaves + sandals
+  R2(-3 + legA, 16, 2, 5, pal.skin2);
+  R2(2 - legA, 16, 2, 5, pal.skin);
+  R2(-3 + legA, 16, 2, 2, pal.greave);
+  R2(2 - legA, 16, 2, 2, pal.greave);
+  R2(-3 + legA, 21, 3, 1, pal.sh1);
+  R2(2 - legA, 21, 3, 1, pal.sh1);
+
+  // pteruges skirt
+  for (let i = 0; i < 4; i++) R2(-4 + i * 2, 12, 2, 4, i % 2 ? pal.tunic : pal.cloak2);
+
+  // cuirass
+  R2(-4, 6, 9, 6, pal.cuir);
+  R2(-1, 6, 2, 6, pal.cuirHi);
+  R2(-4, 6, 1, 6, pal.cuirSh);
+  R2(-4, 11, 9, 1, pal.sh1);
+
+  // head + helmet
+  R2(-2, 1, 6, 5, pal.skin);
+  R2(-2, 1, 2, 5, pal.hair);
+  R2(-3, -1, 8, 3, pal.helm2);
+  R2(-3, 2, 2, 3, pal.helm2);
+  R2(3, 2, 2, 2, pal.helm1);
+  R2(-3, -1, 8, 1, pal.helm3);
+  if (horns) {
+    R2(4, -2, 2, 2, pal.helm3); R2(5, -4, 2, 2, pal.helm2); R2(4, -5, 2, 1, pal.helm3);
+    R2(-4, -2, 2, 2, pal.helm2); R2(-5, -4, 2, 2, pal.helm1);
+  }
+
+  // weapons
+  if (atk && atk.kind === 'spear') {
+    R2(2, 8, 24, 1, pal.spear); R2(26, 7, 3, 3, pal.tip);
+  } else if (atk && atk.kind === 'lunge') {
+    R2(2, 8, 28, 2, pal.spear); R2(30, 7, 4, 4, pal.tip);
+  } else if (atk && atk.kind === 'sword') {
+    if (atk.idx === 0) { R2(5, -4, 2, 10, pal.blade); R2(4, 5, 4, 2, pal.helm2); }
+    else if (atk.idx === 1) { R2(6, 7, 12, 2, pal.blade); R2(5, 6, 2, 4, pal.helm2); }
+    else { R2(6, 12, 11, 2, pal.blade); R2(5, 10, 2, 4, pal.helm2); }
+  } else if (atk && atk.kind === 'bash') {
+    // shield thrust
+  } else if (p.charge > 0) {
+    R2(-12, 6, 8, 1, pal.helm3); R2(-14, 9, 6, 1, pal.helm3);
+  } else {
+    R2(6, -6, 1, 24, pal.spear); R2(5, -9, 3, 3, pal.tip);
+  }
+
+  // shield front (block / bash)
+  if (p.block || (atk && atk.kind === 'bash')) {
+    const sx2 = atk && atk.kind === 'bash' ? 7 : 5;
+    R2(sx2, 5, 7, 11, pal.sh2);
+    R2(sx2 + 1, 6, 5, 9, pal.sh1);
+    R2(sx2 + 2, 9, 3, 3, pal.lion);
+    R2(sx2 + 3, 8, 1, 1, pal.sh1);
+  }
+
+  // Tier-2 divinity shimmer
+  if (horns && !glitch && Math.random() < 0.12) {
+    R2(-5 + Math.floor(Math.random() * 11), -3 + Math.floor(Math.random() * 22), 1, 1, '#f3cf6b');
+  }
+  ctx.restore();
+}
+
+function drawEnemy(e) {
+  const t = G.time;
+  const gl = e.petrified > 0 ? 0 : 1;
+  function gc(c) {
+    if (e.petrified > 0) return '#8a93a0';
+    return (gl && Math.random() < 0.15) ? (Math.random() < 0.5 ? '#39ff6a' : '#b03cff') : c;
+  }
+  const jx = e.petrified > 0 ? 0 : (Math.random() < 0.3 ? Math.floor(Math.random() * 3) - 1 : 0);
+  if (e.type === 'numberless') {
+    FR(e.x + jx, e.y, 6, 6, gc('#2a2433'));
+    FR(e.x + 1 + jx, e.y + 1, 2, 2, gc('#39ff6a'));
+    FR(e.x + 4, e.y + 2, 1, 1, gc('#ff3963'));
+  } else if (e.type === 'licker') {
+    for (let i = 0; i < 4; i++) {
+      const sy = Math.sin(t * 8 + i * 1.2 + e.seed) * 2;
+      FR(e.x + i * 4 + jx, e.y + 3 + sy, 4, 4, gc(i === 0 ? '#3a4a3d' : '#2a2433'));
+    }
+    FR(e.x + (e.facing === -1 ? 0 : 12) + jx, e.y + 2, 2, 2, gc('#39ff6a'));
+    FR(e.x + (e.facing === -1 ? -2 : 16), e.y + 5, 2, 1, gc('#b03cff'));
+  } else if (e.type === 'biter') {
+    FR(e.x + jx, e.y, 18, 9, gc('#3a3f46'));
+    FR(e.x + 2, e.y + 2, 14, 5, gc('#2a2433'));
+    for (let i = 0; i < 3; i++) FR(e.x + 3 + i * 5, e.y + 1, 2, 1, gc('#6a7079'));
+    FR(e.x, e.y + 9, 4, 3, gc('#2a2433'));
+    FR(e.x + 14, e.y + 9, 4, 3, gc('#2a2433'));
+    const mo = Math.floor(t * 14) % 2;
+    const mx = e.facing === -1 ? e.x - 3 : e.x + 18;
+    FR(mx, e.y + 2 + mo, 3, 2, gc('#dfe3e8'));
+    FR(mx, e.y + 6 - mo, 3, 2, gc('#dfe3e8'));
+    FR(e.x + (e.facing === -1 ? 2 : 14), e.y + 3, 2, 2, gc('#ff3963'));
+  } else if (e.type === 'echoborn') {
+    drawHero({ x: e.x, y: e.y, w: e.w, h: e.h, face: e.facing, vx: e.vx, runPhase: t * 10, block: false, atk: null, charge: 0 },
+      { pal: GPAL, glitch: e.petrified <= 0, horns: true });
+    if (e.petrified > 0) { G.ctx.globalAlpha = 0.75; FR(e.x - 2, e.y - 4, 14, 28, '#8a93a0'); G.ctx.globalAlpha = 1; }
+  }
+}
+
+function drawBoss() {
+  const b = G.boss;
+  if (!b) return;
+  const t = G.time;
+  function gc(c) { return Math.random() < 0.13 ? (Math.random() < 0.5 ? '#39ff6a' : '#b03cff') : c; }
+  if (b.phase === 1) {
+    // flayed mammoth-thing + rider
+    const x = b.x, y = b.y;
+    FR(x, y + 8, 52, 22, gc('#5a2f2a'));
+    for (let i = 0; i < 5; i++) FR(x + 2 + i * 10, y + 10, 8, 2, gc('#7a4038'));
+    FR(x + (b.chargeDir === 1 ? 40 : 0), y, 14, 14, gc('#5a2f2a'));
+    const hx = b.chargeDir === 1 || (G.player.x > x) ? x + 44 : x - 2;
+    FR(hx, y + 4, 10, 8, gc('#4a2522'));
+    FR(hx + 2, y + 12, 8, 3, gc('#dfe3e8'));
+    FR(hx + 4, y + 6, 2, 2, gc('#ff3963'));
+    for (let i = 0; i < 4; i++) FR(x + 4 + i * 13, y + 30, 6, 10, gc('#4a2522'));
+    // the rider
+    FR(x + 20, y - 10, 8, 12, gc('#2a2433'));
+    FR(x + 21, y - 14, 6, 4, gc('#1c222c'));
+    FR(x + 22, y - 13, 1, 1, gc('#39ff6a'));
+    FR(x + 25, y - 13, 1, 1, gc('#39ff6a'));
+    if (b.state === 'telegraph') { G.ctx.globalAlpha = 0.5 + Math.sin(t * 30) * 0.3; FR(x - 4, y - 16, 60, 4, '#ff3963'); G.ctx.globalAlpha = 1; }
+  } else if (b.phase === 2) {
+    // the Swarm Crown
+    for (let i = 0; i < 9; i++) {
+      const ox = Math.sin(t * 6 + i * 2.2) * 4, oy = Math.cos(t * 7 + i * 1.7) * 3;
+      FR(b.x + 4 + (i % 3) * 7 + ox, b.y + 4 + Math.floor(i / 3) * 10 + oy, 7, 8, gc('#2a2433'));
+    }
+    for (let i = 0; i < 4; i++) FR(b.x + 4 + i * 6, b.y - 4 + Math.sin(t * 9 + i) * 2, 3, 6, gc('#1c222c'));
+    FR(b.x + 8, b.y + 6, 2, 2, gc('#ff3963'));
+    FR(b.x + 16, b.y + 6, 2, 2, gc('#ff3963'));
+    if (b.aflame > 0) {
+      G.ctx.globalAlpha = 0.7;
+      FR(b.x - 2, b.y - 6, b.w + 4, 4, '#f3a33c');
+      FR(b.x - 2, b.y - 2, 3, b.h, '#f3a33c');
+      FR(b.x + b.w - 1, b.y - 2, 3, b.h, '#f3a33c');
+      G.ctx.globalAlpha = 1;
+    }
+  } else if (b.phase === 3) {
+    drawHero({ x: b.x, y: b.y, w: 10, h: 22, face: G.player.x < b.x ? -1 : 1, vx: b.vx, runPhase: t * 10, block: b.parryCd <= 0, atk: null, charge: 0 },
+      { pal: GPAL, glitch: true, horns: true });
+  }
+}
+
+// ---------- the world ----------
+function drawSky(camX) {
+  const pal = palAt(camX + G.W / 2);
+  const ctx = G.ctx;
+  const bands = 9;
+  for (let i = 0; i < bands; i++) {
+    FR(0, i * (G.H / bands), G.W, G.H / bands + 1, mixc(pal.top, pal.bot, i / (bands - 1)));
+  }
+  // dither seams between bands
+  ctx.globalAlpha = 0.5;
+  for (let i = 1; i < bands; i++) {
+    const y = Math.round(i * (G.H / bands));
+    const c = mixc(pal.top, pal.bot, i / (bands - 1));
+    for (let x = 0; x < G.W; x += 4) {
+      if (hash2(x, i) < 0.5) FR(x + (i % 2) * 2, y - 2, 2, 2, c);
+    }
+  }
+  ctx.globalAlpha = 1;
+  const t = zoneT(camX + G.W / 2);
+  // Act I/II sun
+  if (t < 1.6) {
+    const sa = 1 - clamp(t - 0.8, 0, 0.8) / 0.8;
+    ctx.globalAlpha = 0.9;
+    FR(330 - t * 60, 50 + t * 30, 26, 26, '#f6e3a8');
+    FR(334 - t * 60, 46 + t * 30, 18, 34, '#f6e3a8');
+    ctx.globalAlpha = 0.25 * sa;
+    FR(320 - t * 60, 40 + t * 30, 46, 46, '#f6c87a');
+    ctx.globalAlpha = 1;
+  }
+  // stars + aurora at the Roof of the World
+  if (t > 1.4) {
+    const a = clamp((t - 1.4) / 0.6, 0, 1);
+    ctx.globalAlpha = a * 0.8;
+    for (let i = 0; i < 40; i++) {
+      FR(hash2(i, 1) * G.W, hash2(i, 2) * 120, 1, 1, '#dfe8ef');
+    }
+    const pulse = 0.5 + Math.sin(G.time * 1.3) * 0.25 + (G.front ? clamp(1 - (G.front.x - 4300) / 800, 0, 0.4) : 0);
+    for (let band = 0; band < 3; band++) {
+      ctx.globalAlpha = a * 0.13 * pulse * (3 - band);
+      for (let x = 0; x < G.W; x += 6) {
+        const y = 30 + band * 16 + Math.sin(x * 0.02 + G.time * 0.7 + band * 2) * 14;
+        FR(x, y, 6, 22, band === 1 ? '#b03cff' : '#39ff6a');
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawFar(camX) {
+  const ctx = G.ctx;
+  const t = zoneT(camX + G.W / 2);
+  const pal = palAt(camX + G.W / 2);
+  const px = camX * 0.18;
+  ctx.globalAlpha = 0.85;
+  if (t < 1.3) {
+    // Olympus & pyramids
+    for (let i = -1; i < 5; i++) {
+      const bx = i * 220 - (px % 220);
+      const peak = 70 + hash2(i + Math.floor((camX * 0.18) / 220), 7) * 30;
+      ctx.fillStyle = pal.far;
+      ctx.beginPath();
+      ctx.moveTo(bx, 210); ctx.lineTo(bx + 80, peak); ctx.lineTo(bx + 170, 210);
+      ctx.fill();
+    }
+    if (camX > 600) {
+      const a = clamp((camX - 600) / 500, 0, 1) * (t < 1 ? 1 : 1 - (t - 1));
+      ctx.globalAlpha = 0.7 * clamp(a, 0, 1);
+      const bx = 300 - ((camX * 0.25) % 700);
+      ctx.fillStyle = mixc(pal.far, '#e8d9a0', 0.4);
+      ctx.beginPath(); ctx.moveTo(bx, 205); ctx.lineTo(bx + 55, 130); ctx.lineTo(bx + 110, 205); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(bx + 130, 205); ctx.lineTo(bx + 170, 155); ctx.lineTo(bx + 210, 205); ctx.fill();
+    }
+  }
+  if (t >= 1.3) {
+    // jagged peaks, back-lit by the Breach: a false dawn rising in the east
+    const a = clamp((t - 1.3) / 0.7, 0, 1);
+    ctx.globalAlpha = a;
+    const pulse = 0.5 + Math.sin(G.time * 2.1) * 0.2;
+    const grd = ctx.createLinearGradient(G.W * 0.4, 0, G.W, 0);
+    grd.addColorStop(0, 'rgba(120,20,30,0)');
+    grd.addColorStop(1, 'rgba(220,40,50,' + (0.30 * pulse * a) + ')');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, G.W, 210);
+    for (let i = -1; i < 6; i++) {
+      const bx = i * 150 - ((camX * 0.22) % 150);
+      const peak = 50 + hash2(i + Math.floor((camX * 0.22) / 150), 9) * 50;
+      ctx.fillStyle = mixc(pal.far, '#1d2434', 0.5);
+      ctx.beginPath();
+      ctx.moveTo(bx, 215); ctx.lineTo(bx + 60, peak); ctx.lineTo(bx + 75, peak + 14); ctx.lineTo(bx + 95, peak - 8); ctx.lineTo(bx + 150, 215);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawMid(camX) {
+  const ctx = G.ctx;
+  const t = zoneT(camX + G.W / 2);
+  const pal = palAt(camX + G.W / 2);
+  const px = camX * 0.5;
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = pal.mid;
+  FR(0, 196, G.W, 80, mixc(pal.mid, pal.ground, 0.4));
+  for (let i = -1; i < 4; i++) {
+    const seed = i + Math.floor(px / 260);
+    const bx = i * 260 - (px % 260);
+    const r = hash2(seed, 11);
+    if (t < 1.2 && r < 0.6) {
+      // temple silhouettes
+      const ty = 158 + r * 20;
+      for (let c2 = 0; c2 < 4; c2++) FR(bx + 40 + c2 * 9, ty, 4, 196 - ty, pal.mid);
+      FR(bx + 34, ty - 6, 48, 6, pal.mid);
+      ctx.beginPath(); ctx.fillStyle = pal.mid;
+      ctx.moveTo(bx + 34, ty - 6); ctx.lineTo(bx + 58, ty - 18); ctx.lineTo(bx + 82, ty - 6); ctx.fill();
+    } else if (t >= 1.2 && t < 1.8) {
+      for (let g2 = 0; g2 < 6; g2++) FR(bx + g2 * 40 + r * 30, 188 + hash2(seed, g2) * 6, 26, 4, pal.mid);
+    } else if (t >= 1.8) {
+      ctx.beginPath(); ctx.fillStyle = pal.mid;
+      ctx.moveTo(bx, 196); ctx.lineTo(bx + 70 + r * 60, 120 + r * 40); ctx.lineTo(bx + 180, 196); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawTerrain(camX) {
+  const c0 = Math.max(0, Math.floor(camX / TS) - 1);
+  const c1 = Math.min(COLS - 1, c0 + Math.ceil(G.W / TS) + 2);
+  for (let c = c0; c <= c1; c++) {
+    const x = c * TS;
+    const pal = palAt(x);
+    if (G.world.water[c]) {
+      const wob = Math.sin(G.time * 3 + c) > 0.4 ? 1 : 0;
+      FR(x, WATER_Y + wob, TS, G.H - WATER_Y, mixc('#3a7d96', pal.bot, 0.2));
+      FR(x, WATER_Y + wob, TS, 2, '#7ec0d8');
+      if (hash2(c, Math.floor(G.time * 4)) < 0.3) FR(x + 4, WATER_Y + 3 + wob, 4, 1, '#a8dcec');
+      continue;
+    }
+    const gy = G.world.ground[c];
+    const shade = 0.92 + hash2(c, 3) * 0.16;
+    FR(x, gy, TS, 4, pal.grass);
+    FR(x, gy + 4, TS, G.H - gy, mixc(pal.ground, '#000000', 1 - shade + 0.04));
+    FR(x, gy + 26, TS, G.H - gy - 26, mixc(pal.dirt, '#000000', 1 - shade + 0.06));
+    // dither speckles
+    for (let s = 0; s < 3; s++) {
+      const hx = hash2(c * 7 + s, 5);
+      FR(x + Math.floor(hx * 14), gy + 6 + Math.floor(hash2(c, s + 9) * 30), 2, 2, mixc(pal.ground, pal.grass, 0.4));
+    }
+  }
+  // one-way platforms
+  for (const p of G.world.plats) {
+    if (p.x + p.w < camX - 8 || p.x > camX + G.W + 8) continue;
+    const pal = palAt(p.x);
+    FR(p.x, p.y, p.w, 3, mixc(pal.ground, '#000', 0.25));
+    FR(p.x, p.y, p.w, 1, pal.grass);
+  }
+  for (const bp of G.brassPlats) {
+    const a = clamp(bp.life / 3, 0, 1);
+    G.ctx.globalAlpha = a;
+    FR(bp.x, bp.y, bp.w, 4, '#d9a85a');
+    FR(bp.x, bp.y, bp.w, 1, '#f3cf6b');
+    G.ctx.globalAlpha = 1;
+  }
+}
+
+function drawDecos(camX) {
+  for (const d of G.world.decos) {
+    if (d.x < camX - 30 || d.x > camX + G.W + 30) continue;
+    const gy = terrainY(d.x + 4, true);
+    if (gy > 900) continue;
+    const pal = palAt(d.x);
+    if (d.type === 'column') {
+      FR(d.x, gy - d.h, 8, d.h, '#e8e0cc');
+      FR(d.x + 1, gy - d.h, 2, d.h, '#fff8e8');
+      FR(d.x - 2, gy - d.h, 12, 3, '#e8e0cc');
+      FR(d.x - 2, gy - 3, 12, 3, '#d8d0bc');
+    } else if (d.type === 'brokencol') {
+      FR(d.x, gy - d.h, 8, d.h, '#ddd5c0');
+      FR(d.x - 1, gy - d.h, 10, 2, '#c8c0ac');
+    } else if (d.type === 'laurel') {
+      FR(d.x + 3, gy - 6, 2, 6, '#6b4a2a');
+      FR(d.x, gy - 12, 8, 7, '#7d9c48');
+      FR(d.x + 2, gy - 14, 4, 3, '#94b35a');
+    } else if (d.type === 'tuft') {
+      FR(d.x, gy - 4, 1, 4, pal.grass);
+      FR(d.x + 3, gy - 6, 1, 6, mixc(pal.grass, '#fff', 0.15));
+      FR(d.x + 6, gy - 3, 1, 3, pal.grass);
+    } else if (d.type === 'yurt') {
+      FR(d.x - 4, gy - 12, 24, 12, '#b09a78');
+      FR(d.x - 1, gy - 17, 18, 6, '#94805f');
+      FR(d.x + 6, gy - 8, 5, 8, '#594031');
+    } else if (d.type === 'bones') {
+      FR(d.x, gy - 3, 10, 2, '#e8e3d0');
+      FR(d.x + 3, gy - 6, 2, 4, '#e8e3d0');
+    } else if (d.type === 'pine') {
+      FR(d.x + 3, gy - d.h, 3, d.h, '#3d3328');
+      for (let i = 0; i < 4; i++) {
+        const w = 16 - i * 3;
+        FR(d.x + 4.5 - w / 2, gy - d.h + 2 + i * 5 - 14, w, 5, i % 2 ? '#2e4438' : '#3a5546');
+        FR(d.x + 4.5 - w / 2, gy - d.h + 2 + i * 5 - 14, w, 1, '#dfe8ef');
+      }
+    } else if (d.type === 'shard') {
+      FR(d.x, gy - d.h, 4, d.h, '#9fb2c4');
+      FR(d.x + 1, gy - d.h, 1, d.h, '#dfe8ef');
+    }
+  }
+}
+
+function drawLandmarks(camX) {
+  const w = G.world;
+  // Siwa shrine
+  if (w.shrine.x > camX - 60 && w.shrine.x < camX + G.W + 60) {
+    const x = w.shrine.x, gy = terrainY(x, true);
+    FR(x - 14, gy - 30, 6, 30, '#e8e0cc');
+    FR(x + 8, gy - 30, 6, 30, '#e8e0cc');
+    FR(x - 18, gy - 34, 36, 5, '#e8e0cc');
+    FR(x - 4, gy - 24, 8, 8, w.shrine.used ? '#f3cf6b' : '#c9912f');
+    FR(x - 6, gy - 26, 3, 3, '#c9912f'); FR(x + 3, gy - 26, 3, 3, '#c9912f');
+    if (!w.shrine.used && Math.random() < 0.15) addPart(x + (Math.random() - 0.5) * 20, gy - 30, 0, -20, '#f3cf6b', 0.8);
+    if (!w.shrine.used && Math.abs(G.player.x - x) < 30) drawPrompt(x, gy - 44, 'E: COMMUNE');
+  }
+  // forge-camp
+  if (w.camp.x > camX - 60 && w.camp.x < camX + G.W + 60) {
+    const x = w.camp.x, gy = terrainY(x, true);
+    FR(x - 20, gy - 14, 16, 14, '#94805f');
+    FR(x - 16, gy - 18, 8, 5, '#b09a78');
+    FR(x + 8, gy - 3, 12, 3, '#3d3328');
+    const f = Math.floor(G.time * 8) % 2;
+    FR(x + 11, gy - 8 + f, 6, 6 - f, '#f3a33c');
+    FR(x + 13, gy - 10 + f, 2, 3, '#f6e3a8');
+    FR(x - 2, gy - 26, 2, 26, '#6b4a2a');
+    FR(x, gy - 26, 8, 5, '#c9912f');
+    if (Math.abs(G.player.x - x) < 30 && G.player.hp < G.player.maxhp) drawPrompt(x, gy - 34, 'E: REST');
+  }
+  // braziers at the gate
+  for (const bx of w.braziers) {
+    if (bx < camX - 30 || bx > camX + G.W + 30) continue;
+    const gy = terrainY(bx, true);
+    FR(bx - 1, gy - 12, 3, 12, '#3a3f46');
+    FR(bx - 4, gy - 15, 9, 4, '#5b5f66');
+    const f = Math.floor(G.time * 9 + bx) % 2;
+    FR(bx - 3, gy - 21 + f, 7, 6 - f, '#f3a33c');
+    FR(bx - 1, gy - 23 + f, 3, 3, '#f6e3a8');
+  }
+  // cracked rocks
+  for (const r of w.rocks) {
+    if (r.broken) continue;
+    FR(r.x, r.y, r.w, r.h, '#7d6a55');
+    FR(r.x + 2, r.y + 2, r.w - 4, r.h - 4, '#94805f');
+    FR(r.x + 8, r.y + 4, 2, r.h - 10, '#54462f');
+    FR(r.x + 4, r.y + r.h / 2, r.w - 8, 2, '#54462f');
+  }
+  // cages
+  for (const cg of w.cages) {
+    if (cg.freed) continue;
+    FR(cg.x, cg.y, cg.w, cg.h, '#2a2433');
+    FR(cg.x + 2, cg.y + 2, cg.w - 4, cg.h - 4, '#0b0908');
+    for (let i = 0; i < 4; i++) FR(cg.x + 2 + i * 4, cg.y, 1, cg.h, '#3a3f46');
+    FR(cg.x + 6, cg.y + 8, 6, 10, '#a8704c');
+    FR(cg.x + 7, cg.y + 5, 4, 4, '#e0a878');
+  }
+  // ore nodes
+  for (const n of w.nodes) {
+    if (n.amt <= 0) continue;
+    if (n.x < camX - 20 || n.x > camX + G.W + 20) continue;
+    const c = n.type === 'iron' ? '#8a93a0' : '#d9a85a';
+    FR(n.x - 5, n.y, 10, 8, '#54462f');
+    FR(n.x - 3, n.y + 1, 3, 3, c);
+    FR(n.x + 1, n.y + 3, 3, 3, c);
+    FR(n.x - 1, n.y - 1, 2, 2, c);
+    if (Math.abs(G.player.x - n.x) < 18) drawPrompt(n.x, n.y - 12, 'HOLD E: MINE');
+  }
+  // relics
+  for (const r of w.relics) {
+    if (r.got) continue;
+    if (r.x < camX - 20 || r.x > camX + G.W + 20) continue;
+    const bob = Math.sin(G.time * 3 + r.x) * 2;
+    FR(r.x - 3, r.y + bob, 6, 6, '#b08fdd');
+    FR(r.x - 1, r.y - 2 + bob, 2, 2, '#e0d0f8');
+    if (Math.random() < 0.1) addPart(r.x, r.y + bob, (Math.random() - 0.5) * 20, -20, '#b08fdd', 0.5);
+  }
+}
+
+function drawWall(camX) {
+  const wl = G.wall;
+  if (wl.x0 + 8 * wl.segW < camX - 40 || wl.x0 > camX + G.W + 40) return;
+  for (const s of wl.segs) {
+    const h = s.base - s.top;
+    const isGate = s.i === wl.gateIndex;
+    if (s.stage === 0) {
+      // foundation stones + marker
+      FR(s.x + 2, s.base - 4, s.w - 4, 4, '#6a7079');
+      FR(s.x + s.w / 2 - 1, s.base - 18, 2, 14, '#6b4a2a');
+      FR(s.x + s.w / 2 + 1, s.base - 18, 7, 5, G.iron >= 3 ? '#c9912f' : '#8a5a18');
+      if (Math.abs(G.player.x - (s.x + s.w / 2)) < 22 && G.flags.reachedWall) drawPrompt(s.x + s.w / 2, s.base - 28, 'E: BUILD (IRON)');
+    } else {
+      const dmg = s.hp / s.maxhp;
+      // iron block courses
+      for (let row = 0; row < Math.ceil(h / 8); row++) {
+        const off = (row % 2) * 6;
+        FR(s.x, s.top + row * 8, s.w, 8, row % 2 ? '#3a3f46' : '#41464e');
+        FR(s.x + off + 3, s.top + row * 8 + 3, 2, 2, '#6a7079');
+        FR(s.x + off + 14, s.top + row * 8 + 5, 2, 2, '#565b63');
+      }
+      // battlement
+      for (let m2 = 0; m2 < 3; m2++) FR(s.x + 2 + m2 * 9, s.top - 5, 6, 5, '#3a3f46');
+      if (s.stage === 2) {
+        // brass seams + meander engraving: the Iron Verse made real
+        FR(s.x + 4, s.top, 2, h, '#d9a85a');
+        FR(s.x + s.w - 6, s.top, 2, h, '#d9a85a');
+        FR(s.x, s.top + 10, s.w, 2, '#d9a85a');
+        for (let mx = 0; mx < 3; mx++) FR(s.x + 4 + mx * 8, s.top + 16, 4, 2, '#c9912f');
+        if (Math.random() < 0.06) FR(s.x + Math.random() * s.w, s.top + Math.random() * h, 1, 1, '#f3cf6b');
+      }
+      if (s.weak) FR(s.x + s.w / 2 - 1, s.top + 8, 2, h - 16, '#1d2434');
+      // damage cracks
+      if (dmg < 0.7) {
+        FR(s.x + 6, s.top + 12, 2, h * (1 - dmg) * 0.5, '#16121d');
+        FR(s.x + 16, s.top + 20, 2, h * (1 - dmg) * 0.4, '#16121d');
+      }
+      // hp pip
+      if (s.hp < s.maxhp) {
+        FR(s.x + 2, s.top - 10, s.w - 4, 3, '#16121d');
+        FR(s.x + 3, s.top - 9, (s.w - 6) * dmg, 1, dmg > 0.4 ? '#7d9c48' : '#ff3963');
+      }
+      if (isGate) {
+        FR(s.x + s.w / 2 - 5, s.base - 16, 10, 16, G.flags.bossDone ? '#d9a85a' : '#16121d');
+        FR(s.x + s.w / 2 - 4, s.base - 14, 8, 14, G.flags.bossDone ? '#c9912f' : '#0b0908');
+        // the gate lion
+        FR(s.x + s.w / 2 - 2, s.top + 24, 4, 4, '#f3cf6b');
+        if (G.flags.bossDone) {
+          // the Khagan, entombed mid-lunge, forever
+          FR(s.x + s.w / 2 - 3, s.top + 30, 6, 10, '#8a6f3c');
+          FR(s.x + s.w / 2 - 5, s.top + 33, 3, 3, '#8a6f3c');
+          FR(s.x + s.w / 2 + 2, s.top + 31, 3, 2, '#8a6f3c');
+        }
+      }
+      if (s.stage === 1 && Math.abs(G.player.x - (s.x + s.w / 2)) < 22) {
+        drawPrompt(s.x + s.w / 2, s.top - 16, s.hp < s.maxhp * 0.6 ? 'E: REPAIR' : 'E: POUR BRASS (2)');
+      }
+    }
+  }
+  // ramparts (Iron Verse)
+  for (const r of G.ramparts) {
+    const a = clamp(r.life / 2, 0, 1);
+    G.ctx.globalAlpha = Math.min(1, a + 0.4);
+    FR(r.x, r.y, r.w, r.h, '#3a3f46');
+    FR(r.x + 1, r.y, 2, r.h, '#6a7079');
+    FR(r.x, r.y, r.w, 3, '#8a93a0');
+    G.ctx.globalAlpha = 1;
+  }
+  // seal progress during the finale
+  if (G.seal && G.boss && G.boss.phase === 4) {
+    const gx = wl.gateX;
+    FR(gx - 16, 120, 32, 5, '#16121d');
+    FR(gx - 15, 121, 30 * clamp(G.seal.t / G.seal.need, 0, 1), 3, '#f3a33c');
+    drawPrompt(gx, 112, 'HOLD E: SEAL THE GATE');
+  }
+}
+
+function drawPrompt(x, y, text) {
+  const ctx = G.ctx;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#16121d';
+  const w = ctx.measureText(text).width + 6;
+  ctx.globalAlpha = 0.7;
+  ctx.fillRect(Math.round(x - w / 2), Math.round(y - 7), Math.round(w), 10);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText(text, Math.round(x), Math.round(y));
+  ctx.textAlign = 'left';
+}
+
+// the Fraying: corruption eats the art style itself
+function drawFraying(camX) {
+  const f = G.front;
+  if (!f || f.x > camX + G.W) return;
+  const ctx = G.ctx;
+  const startX = Math.max(camX, f.x);
+  for (let x = Math.floor(startX / 8) * 8; x < camX + G.W; x += 8) {
+    const depth = clamp((x - f.x) / 400 + 0.25, 0, 1);
+    for (let y = 0; y < G.H; y += 8) {
+      const n = hash2(x + Math.floor(G.time * 7) * 31, y);
+      if (n < depth * 0.30) {
+        ctx.globalAlpha = 0.12 + depth * 0.22;
+        const c = n < depth * 0.08 ? '#39ff6a' : n < depth * 0.16 ? '#b03cff' : '#16121d';
+        FR(x + (n * 64) % 6, y + (n * 256) % 6, 3 + n * 6, 2 + n * 4, c);
+      }
+    }
+  }
+  // the front line itself: a curtain of static
+  ctx.globalAlpha = 0.5;
+  for (let y = 0; y < G.H; y += 4) {
+    const wob = Math.sin(y * 0.1 + G.time * 4) * 4 + (hash2(y, Math.floor(G.time * 10)) - 0.5) * 8;
+    FR(f.x + wob, y, 3, 4, hash2(y, Math.floor(G.time * 12)) < 0.5 ? '#39ff6a' : '#b03cff');
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWeather(camX, front) {
+  const t = zoneT(camX + G.W / 2);
+  const ctx = G.ctx;
+  if (t > 1.55) {
+    // blizzard, in front of AND behind the action
+    const a = clamp((t - 1.55) / 0.45, 0, 1);
+    ctx.globalAlpha = (front ? 0.55 : 0.3) * a;
+    const n = front ? 36 : 26;
+    for (let i = 0; i < n; i++) {
+      const spd = front ? 60 + (i % 4) * 22 : 30 + (i % 3) * 12;
+      const x = ((i * 137 + 53) - G.time * spd * 1.6 - camX * (front ? 0.3 : 0.1)) % G.W;
+      const y = (i * 61 + G.time * spd) % G.H;
+      FR(((x % G.W) + G.W) % G.W, y, front ? 2 : 1, front ? 2 : 1, '#dfe8ef');
+    }
+    ctx.globalAlpha = 1;
+  } else if (t > 0.6 && t < 1.5 && front) {
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 16; i++) {
+      const x = ((i * 167) - G.time * (40 + (i % 3) * 25) - camX * 0.2) % G.W;
+      const y = (i * 47 + Math.sin(G.time + i) * 20) % G.H;
+      FR(((x % G.W) + G.W) % G.W, ((y % G.H) + G.H) % G.H, 3, 1, '#d8b56f');
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- UI ----------
+// the Greek key border — it mutates per act, and the Fraying bites it
+function drawMeander() {
+  const ctx = G.ctx;
+  const t = zoneT(G.cam.x + G.W / 2);
+  let col = mixc('#c9912f', '#9fb2c4', clamp(t - 1, 0, 1));
+  const bg = '#16121d';
+  FR(0, 0, G.W, 8, bg); FR(0, G.H - 8, G.W, 8, bg);
+  FR(0, 0, 8, G.H, bg); FR(G.W - 8, 0, 8, G.H, bg);
+  const corrupted = G.front && G.front.x < G.cam.x + G.W;
+  for (let x = 0; x < G.W; x += 8) {
+    let c = col;
+    if (corrupted && hash2(x, Math.floor(G.time * 5)) < 0.1) c = '#39ff6a';
+    const k = (x / 8) % 2;
+    FR(x + 1, 2, 6, 1, c); FR(x + 1, 5, 6, 1, c);
+    FR(x + (k ? 1 : 5), 3, 1, 2, c);
+    FR(x + 1, G.H - 6, 6, 1, c); FR(x + 1, G.H - 3, 6, 1, c);
+    FR(x + (k ? 5 : 1), G.H - 5, 1, 2, c);
+    if (t > 0.5 && t < 1.6 && k) { FR(x + 3, 3, 1, 1, '#d8a35e'); FR(x + 3, G.H - 4, 1, 1, '#d8a35e'); }
+  }
+  for (let y = 8; y < G.H - 8; y += 8) {
+    let c = col;
+    if (corrupted && hash2(y * 3, Math.floor(G.time * 5)) < 0.1) c = '#b03cff';
+    const k = (y / 8) % 2;
+    FR(2, y + 1, 1, 6, c); FR(5, y + 1, 1, 6, c);
+    FR(3, y + (k ? 1 : 5), 2, 1, c);
+    FR(G.W - 3, y + 1, 1, 6, c); FR(G.W - 6, y + 1, 1, 6, c);
+    FR(G.W - 5, y + (k ? 5 : 1), 2, 1, c);
+  }
+}
+
+function drawHeart(x, y, fill) {
+  FR(x, y, 2, 2, fill ? '#ff3963' : '#3a2430');
+  FR(x + 3, y, 2, 2, fill ? '#ff3963' : '#3a2430');
+  FR(x, y + 1, 5, 2, fill ? '#ff3963' : '#3a2430');
+  FR(x + 1, y + 3, 3, 1, fill ? '#c92347' : '#2a1a24');
+  FR(x + 2, y + 4, 1, 1, fill ? '#c92347' : '#2a1a24');
+}
+
+function fmtTime(s) {
+  s = Math.max(0, Math.ceil(s));
+  return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+}
+
+function drawHUD() {
+  const ctx = G.ctx;
+  const p = G.player;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  // hearts
+  for (let i = 0; i < Math.ceil(p.maxhp); i++) drawHeart(12 + i * 7, 12, p.hp > i);
+  // currencies & materials
+  FR(12, 22, 4, 4, '#f3cf6b');
+  ctx.fillStyle = '#f3cf6b'; ctx.fillText('' + Math.floor(G.doxa), 19, 27);
+  FR(44, 22, 4, 4, '#b08fdd');
+  ctx.fillStyle = '#b08fdd'; ctx.fillText('' + G.mythos, 51, 27);
+  FR(70, 22, 4, 4, '#8a93a0');
+  ctx.fillStyle = '#8a93a0'; ctx.fillText('' + G.iron, 77, 27);
+  FR(96, 22, 4, 4, '#d9a85a');
+  ctx.fillStyle = '#d9a85a'; ctx.fillText('' + G.brass, 103, 27);
+  if (G.engineers > 0) { ctx.fillStyle = '#7d9c48'; ctx.fillText('ENG x' + G.engineers, 122, 27); }
+
+  // doom-clock
+  if (G.flags.reachedWall && !G.flags.bossDone) {
+    ctx.textAlign = 'center';
+    const ws = G.waveSys;
+    if (G.boss) {
+      const b = G.boss;
+      ctx.fillStyle = '#ff3963';
+      const pn = ['', 'THE RIDER', 'THE SWARM CROWN', 'THE FALSE ISKANDER', 'THE SEALING'][b.phase];
+      ctx.fillText('YAJUJ-KHAGAN — ' + pn, G.W / 2, 18);
+      if (b.phase < 4) {
+        FR(G.W / 2 - 60, 21, 120, 5, '#16121d');
+        FR(G.W / 2 - 59, 22, 118 * clamp(b.hp / b.maxhp, 0, 1), 3, '#ff3963');
+      }
+    } else if (ws.bossNext) {
+      ctx.fillStyle = '#ff3963';
+      ctx.fillText('IT COMES  ' + fmtTime(ws.bossT), G.W / 2, 18);
+    } else if (ws.active) {
+      let alive = 0;
+      for (const e of G.enemies) if (e.waveTag) alive++;
+      ctx.fillStyle = '#39ff6a';
+      ctx.fillText('WAVE ' + ws.wave + ' — ' + alive + ' REMAIN', G.W / 2, 18);
+    } else {
+      ctx.fillStyle = ws.t < 12 ? '#ff3963' : '#d8b56f';
+      ctx.fillText('NEXT WAVE  ' + fmtTime(ws.t), G.W / 2, 18);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // strategic strip: the whole Wall as one tapestry
+  const mx = G.W - 130, my = 14, mw = 116;
+  FR(mx - 2, my - 2, mw + 4, 12, '#16121d');
+  FR(mx, my + 4, mw, 2, '#54462f');
+  const sc = mw / WORLD_W;
+  for (const s of G.wall.segs) {
+    const c = s.stage === 0 ? '#54462f' : s.stage === 1 ? '#8a93a0' : '#d9a85a';
+    FR(mx + s.x * sc, my + 1, 1, 8, c);
+  }
+  const fx = mx + clamp(G.front.x, 0, WORLD_W) * sc;
+  G.ctx.globalAlpha = 0.6;
+  FR(fx, my, mx + mw - fx, 10, '#b03cff');
+  G.ctx.globalAlpha = 1;
+  FR(mx + G.world.camp.x * sc, my + 2, 1, 6, '#7d9c48');
+  FR(mx + p.x * sc - 1, my + 2, 2, 6, '#f3cf6b');
+
+  // skill slots
+  const slots = [
+    { id: 'phalanx', key: '1' }, { id: 'horns', key: '2' },
+    { id: 'ironverse', key: '3' }, { id: 'brasstide', key: '4' }, { id: 'roar', key: '5' },
+  ];
+  let sx = 12;
+  for (const sl of slots) {
+    if (!G.skills[sl.id]) { continue; }
+    FR(sx, G.H - 24, 12, 12, '#16121d');
+    FR(sx + 1, G.H - 23, 10, 10, '#2a2433');
+    ctx.fillStyle = '#f3cf6b';
+    ctx.fillText(sl.key, sx + 4, G.H - 15);
+    const cd = G.player.cds[sl.id];
+    const max = { phalanx: 14, horns: 9, ironverse: 16, brasstide: 14, roar: 45 }[sl.id];
+    if (cd > 0) {
+      ctx.globalAlpha = 0.7;
+      FR(sx + 1, G.H - 23, 10, 10 * (cd / max), '#0b0908');
+      ctx.globalAlpha = 1;
+    }
+    sx += 14;
+  }
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('Q: SKILLS', sx + 4, G.H - 15);
+
+  // messages
+  ctx.textAlign = 'center';
+  let myy = G.H - 38;
+  for (let i = G.msgs.length - 1; i >= 0; i--) {
+    const m = G.msgs[i];
+    ctx.globalAlpha = clamp(m.t / 0.5, 0, 1);
+    ctx.fillStyle = '#16121d';
+    const w = ctx.measureText(m.text).width + 8;
+    ctx.fillRect(G.W / 2 - w / 2, myy - 8, w, 11);
+    ctx.fillStyle = '#f4ead2';
+    ctx.fillText(m.text, G.W / 2, myy);
+    myy -= 13;
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+function drawMenu() {
+  const ctx = G.ctx;
+  ctx.globalAlpha = 0.85;
+  FR(0, 0, G.W, G.H, '#0b0908');
+  ctx.globalAlpha = 1;
+  const px = 60, py = 22, pw = G.W - 120;
+  FR(px - 4, py - 4, pw + 8, 226, '#16121d');
+  FR(px - 2, py - 2, pw + 4, 222, '#241d18');
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText('— THE TWO HALVES OF ALEXANDER —', G.W / 2, py + 8);
+  ctx.font = '7px monospace';
+  ctx.fillStyle = '#d8b56f';
+  ctx.fillText('Doxa: ' + Math.floor(G.doxa) + '   Mythos: ' + G.mythos, G.W / 2, py + 18);
+  ctx.textAlign = 'left';
+  const tierNames = ['', 'I. MORTAL CONQUEROR', 'II. PHARAOH\'S BLESSING', 'III. THE TWO-HORNED MYTH'];
+  let y = py + 30, lastTier = 0;
+  for (let i = 0; i < SKILLS.length; i++) {
+    const s = SKILLS[i];
+    if (s.tier !== lastTier) {
+      lastTier = s.tier;
+      ctx.fillStyle = tierOpen(s.tier) ? '#c9912f' : '#54462f';
+      ctx.fillText(tierNames[s.tier] + (tierOpen(s.tier) ? '' : '  [' + tierReqText(s.tier) + ']'), px + 4, y);
+      y += 10;
+    }
+    const sel = i === G.menuSel;
+    if (sel) FR(px, y - 7, pw, 9, '#3a2f1a');
+    const owned = G.skills[s.id];
+    ctx.fillStyle = owned ? '#7d9c48' : tierOpen(s.tier) ? (canAfford(s) ? '#f4ead2' : '#8a7d6a') : '#54462f';
+    let cost = '';
+    if (!owned) {
+      cost = (s.cost.doxa ? s.cost.doxa + 'D ' : '') + (s.cost.mythos ? s.cost.mythos + 'M' : '');
+    }
+    ctx.fillText((sel ? '> ' : '  ') + s.name, px + 4, y);
+    ctx.fillText(owned ? 'LEARNED' : cost, px + pw - 56, y);
+    y += 10;
+  }
+  const cur = SKILLS[G.menuSel];
+  ctx.fillStyle = '#d8b56f';
+  ctx.textAlign = 'center';
+  ctx.fillText(cur.desc, G.W / 2, py + 204);
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('UP/DOWN select — ENTER learn — Q close', G.W / 2, py + 215);
+  ctx.textAlign = 'left';
+}
+
+function drawTitle() {
+  const ctx = G.ctx;
+  FR(0, 0, G.W, G.H, '#1a1410');
+  // warm gradient
+  for (let i = 0; i < 9; i++) FR(0, i * 30, G.W, 31, mixc('#120d0a', '#6b4426', i / 8));
+  // distant wall silhouette
+  ctx.globalAlpha = 0.5;
+  for (let x = 40; x < G.W - 40; x += 18) FR(x, 170, 14, 60, '#0b0908');
+  FR(0, 226, G.W, 44, '#0b0908');
+  ctx.globalAlpha = 1;
+  // the hero, displayed like the character sheet
+  const fake = { x: G.W / 2 / 3, y: 36, w: 10, h: 22, face: 1, vx: 0, runPhase: 0, block: false, atk: null, charge: 0 };
+  ctx.save();
+  ctx.scale(3, 3);
+  drawHero(fake, { horns: true });
+  ctx.restore();
+  ctx.font = '16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText('I S K A N D E R', G.W / 2, 56);
+  ctx.font = '8px monospace';
+  ctx.fillStyle = '#c9912f';
+  ctx.fillText('— GATES OF THE TWO-HORNED —', G.W / 2, 70);
+  ctx.fillStyle = '#d8b56f';
+  ctx.fillText('Conquer the world scrolling east. Save it by building a wall.', G.W / 2, 92);
+  ctx.font = '7px monospace';
+  ctx.fillStyle = '#b8a888';
+  const lines = [
+    'MOVE A/D    JUMP W or SPACE    DASH SHIFT    DROP S+JUMP',
+    'SWORD J     SPEAR K     SHIELD hold L (parry = lion roar)',
+    'E interact/build/mine    Q skill tree    1-5 learned skills',
+    '',
+    'March east. Earn the horns at Siwa. Reach the Roof of the World.',
+    'Build the Wall before Yajuj & Majuj devour the art itself.',
+  ];
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], G.W / 2, 126 + i * 11);
+  ctx.fillStyle = Math.floor(G.time * 2) % 2 ? '#f3cf6b' : '#8a5a18';
+  ctx.font = '9px monospace';
+  ctx.fillText('PRESS ENTER', G.W / 2, 212);
+  ctx.textAlign = 'left';
+  drawMeander();
+}
+
+function drawChoice() {
+  const ctx = G.ctx;
+  ctx.globalAlpha = 0.88;
+  FR(0, 0, G.W, G.H, '#0b0908');
+  ctx.globalAlpha = 1;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText('THE WALL IS DONE — SAVE FOR ONE GAP,', G.W / 2, 70);
+  ctx.fillText('EXACTLY ONE SPRITE WIDE.', G.W / 2, 84);
+  ctx.font = '7px monospace';
+  ctx.fillStyle = '#d8b56f';
+  ctx.fillText('A man who spent his life breaking walls must now decide', G.W / 2, 104);
+  ctx.fillText('what of himself gets sealed behind this one.', G.W / 2, 114);
+  const opts = ['SEAL IT FROM THE WEST', 'STEP THROUGH FIRST'];
+  for (let i = 0; i < 2; i++) {
+    const sel = G.choiceSel === i;
+    const x = G.W / 2 + (i === 0 ? -90 : 90);
+    if (sel) FR(x - 70, 140, 140, 22, '#3a2f1a');
+    ctx.fillStyle = sel ? '#f3cf6b' : '#8a7d6a';
+    ctx.fillText(opts[i], x, 154);
+  }
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('LEFT/RIGHT choose — ENTER decide', G.W / 2, 200);
+  ctx.textAlign = 'left';
+  drawMeander();
+}
+
+function drawEnding() {
+  const ctx = G.ctx;
+  const west = G.ending === 'west';
+  for (let i = 0; i < 9; i++) {
+    FR(0, i * 30, G.W, 31, west ? mixc('#f6c87a', '#6b4426', i / 8) : mixc('#1d2434', '#5a2f2a', i / 8));
+  }
+  // the Wall, complete, silhouetted
+  FR(0, 190, G.W, 80, '#0b0908');
+  for (let x = 30; x < G.W - 30; x += 16) {
+    FR(x, 150, 13, 40, '#16121d');
+    FR(x + 2, 144, 3, 6, '#16121d'); FR(x + 8, 144, 3, 6, '#16121d');
+  }
+  // the golden figure
+  if (west) {
+    FR(G.W / 2 - 2, 134, 4, 10, '#f3cf6b');
+    FR(G.W / 2 - 1, 131, 3, 3, '#c9912f');
+    FR(G.W / 2 + 2, 128, 1, 8, '#8a5a18');
+  } else {
+    FR(G.W - 70, 196, 4, 10, '#f3cf6b');
+    FR(G.W - 69, 193, 3, 3, '#c9912f');
+  }
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText(west ? 'ENDING I — THE WALL AND THE KING' : 'ENDING II — THE MISSING PIXEL', G.W / 2, 40);
+  ctx.font = '7px monospace';
+  ctx.fillStyle = '#f4ead2';
+  const lines = west ? [
+    'Iskander seals the gate from the west, and stays.',
+    'He grows old in sight of his own iron verse, the gold of him',
+    'fading one palette index at a time.',
+    '',
+    'The Wall holds. Somewhere behind the brass,',
+    'the horde still dreams of him.',
+  ] : [
+    'He steps through, and the gate seals behind him —',
+    'the last missing pixel of the old world, filled by a king.',
+    '',
+    'The Wall holds. And travellers swear that beyond it,',
+    'on nights when the aurora screams,',
+    'a golden light still fights in the dark.',
+  ];
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], G.W / 2, 60 + i * 11);
+  ctx.fillStyle = '#d8b56f';
+  ctx.fillText('Waves broken: ' + G.stats.waves + '   Foes slain: ' + G.stats.kills + '   Relics: ' + G.stats.relics + '   Years spent: ' + G.age, G.W / 2, 218);
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('PRESS R TO BEGIN AGAIN', G.W / 2, 240);
+  ctx.textAlign = 'left';
+  drawMeander();
+}
+
+function drawGameover() {
+  const ctx = G.ctx;
+  FR(0, 0, G.W, G.H, '#0b0908');
+  for (let i = 0; i < 200; i++) {
+    if (Math.random() < 0.3) FR(Math.random() * G.W, Math.random() * G.H, 2, 2, Math.random() < 0.5 ? '#39ff6a' : '#b03cff');
+  }
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff3963';
+  ctx.fillText('THE WORLD DE-REZZES', G.W / 2, 110);
+  ctx.font = '7px monospace';
+  ctx.fillStyle = '#f4ead2';
+  ctx.fillText(G.gameoverReason, G.W / 2, 130);
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('PRESS R', G.W / 2, 160);
+  ctx.textAlign = 'left';
+}
+
+// ---------- master draw ----------
+function drawAll() {
+  const ctx = G.ctx;
+  if (G.state === 'title') { drawTitle(); return; }
+  if (G.state === 'ending') { drawEnding(); return; }
+  if (G.state === 'gameover') { drawGameover(); return; }
+
+  const shx = G.shake > 0 ? (Math.random() - 0.5) * G.shake : 0;
+  const shy = G.shake > 0 ? (Math.random() - 0.5) * G.shake : 0;
+  const camX = G.cam.x;
+
+  drawSky(camX);
+  drawFar(camX);
+  drawMid(camX);
+  drawWeather(camX, false);
+
+  ctx.save();
+  ctx.translate(-Math.round(camX + shx), -Math.round(shy));
+  drawTerrain(camX);
+  drawDecos(camX);
+  drawLandmarks(camX);
+  drawWall(camX);
+  for (const ec of G.echoes) {
+    ctx.globalAlpha = 0.65;
+    drawHero({ x: ec.x - 5, y: ec.y, w: 10, h: 20, face: 1, vx: 0, runPhase: 0, block: true, atk: null, charge: 0 }, { pal: HPAL, horns: false });
+    ctx.globalAlpha = 1;
+  }
+  for (const o of G.orbs) {
+    if (o.heart) drawHeart(o.x - 2, o.y - 2, true);
+    else FR(o.x - 1, o.y - 1, 3, 3, '#f3cf6b');
+  }
+  for (const e of G.enemies) drawEnemy(e);
+  drawBoss();
+  for (const pr of G.projectiles) {
+    if (pr.kind === 'shock') { FR(pr.x - 3, pr.y, 7, 8, '#b03cff'); FR(pr.x - 1, pr.y - 3, 3, 4, '#39ff6a'); }
+    else { FR(pr.x, pr.y, 2, 8, pr.friendly ? '#f3cf6b' : '#2a2433'); FR(pr.x, pr.y + (pr.vy > 0 ? 8 : 0), 2, 2, pr.friendly ? '#f4ead2' : '#39ff6a'); }
+  }
+  // the hero — the brightest object on screen
+  if (G.player.inv <= 0 || Math.floor(G.time * 16) % 2 === 0) drawHero(G.player, {});
+  // Solar Disc orbit
+  if (G.skills.disc) {
+    const p = G.player;
+    const ang = G.time * 3;
+    const dx2 = p.x + p.w / 2 + Math.cos(ang) * 16, dy2 = p.y + 8 + Math.sin(ang) * 10;
+    ctx.globalAlpha = p.discCd <= 0 ? 1 : 0.3;
+    FR(dx2 - 3, dy2 - 3, 6, 6, '#9c6b30');
+    FR(dx2 - 2, dy2 - 2, 4, 4, '#5b3a1e');
+    FR(dx2 - 1, dy2 - 1, 2, 2, '#f3cf6b');
+    ctx.globalAlpha = 1;
+  }
+  for (const pt of G.particles) {
+    ctx.globalAlpha = clamp(1 - pt.t / pt.life, 0, 1);
+    FR(pt.x, pt.y, 2, 2, pt.col);
+  }
+  ctx.globalAlpha = 1;
+  drawFraying(camX);
+  ctx.restore();
+
+  drawWeather(camX, true);
+
+  if (G.flash > 0) {
+    ctx.globalAlpha = clamp(G.flash, 0, 0.85);
+    FR(0, 0, G.W, G.H, G.flashCol);
+    ctx.globalAlpha = 1;
+  }
+  drawHUD();
+  drawMeander();
+  if (G.state === 'menu') drawMenu();
+  if (G.state === 'choice') drawChoice();
+}
+
+// ============================================================
+// SOURCE: js/main.js
+// ============================================================
+// ============================================================
+// ISKANDER — main loop & state machine
+// ============================================================
+function newGame() {
+  G.state = 'title';
+  G.time = 0; G.slowT = 0; G.shake = 0; G.flash = 0;
+  G.doxa = 0; G.mythos = 0; G.iron = 6; G.brass = 0;
+  G.engineers = 0; G.age = 0;
+  G.skills = {};
+  G.flags = { shrine: false, reachedWall: false, bossDone: false, pourHint: false };
+  G.msgs = []; G.enemies = []; G.projectiles = []; G.particles = [];
+  G.orbs = []; G.echoes = []; G.ramparts = []; G.brassPlats = [];
+  G.boss = null; G.seal = null; G.ending = null; G.choiceT = 0; G.choiceSel = 0;
+  G.menuSel = 0;
+  G.stats = { kills: 0, waves: 0, relics: 0 };
+  G.gameoverReason = '';
+  G.srand = mulberry32(8472);
+  initWorld();
+  G.player = null;
+  resetPlayer(true);
+  G.cam.x = 0;
+}
+
+function startPlay() {
+  G.state = 'play';
+  msg('The known world ends somewhere east. March.', 4);
+  msg('A/D move — SPACE jump — J sword — K spear — hold L shield', 5);
+}
+
+function update(dt) {
+  G.time += dt;
+  G.shake = Math.max(0, G.shake - dt * 14);
+  G.flash = Math.max(0, G.flash - dt * 1.6);
+  for (let i = G.msgs.length - 1; i >= 0; i--) {
+    G.msgs[i].t -= dt;
+    if (G.msgs[i].t <= 0) G.msgs.splice(i, 1);
+  }
+
+  if (G.state === 'title') {
+    if (G.pressed.enter) startPlay();
+    return;
+  }
+  if (G.state === 'gameover' || G.state === 'ending') {
+    if (G.pressed.restart) { newGame(); }
+    return;
+  }
+  if (G.state === 'menu') {
+    if (G.pressed.menu || G.pressed.esc) { G.state = 'play'; G.sfx.ui(); }
+    if (G.pressed.down) { G.menuSel = (G.menuSel + 1) % SKILLS.length; G.sfx.ui(); }
+    if (G.pressed.left) { G.menuSel = (G.menuSel + SKILLS.length - 1) % SKILLS.length; G.sfx.ui(); }
+    if (G.pressed.right) { G.menuSel = (G.menuSel + 1) % SKILLS.length; G.sfx.ui(); }
+    if (G.pressed.enter) buySkill(SKILLS[G.menuSel]);
+    return;
+  }
+  if (G.state === 'choice') {
+    if (G.pressed.left) { G.choiceSel = 0; G.sfx.ui(); }
+    if (G.pressed.right) { G.choiceSel = 1; G.sfx.ui(); }
+    if (G.pressed.enter) {
+      G.ending = G.choiceSel === 0 ? 'west' : 'east';
+      G.state = 'ending';
+      G.sfx.relic();
+    }
+    return;
+  }
+
+  // ---- play ----
+  if (G.pressed.menu) { G.state = 'menu'; G.sfx.ui(); return; }
+
+  // Whisper of the Oracle: time dilation after a perfect parry
+  let ts = 1;
+  if (G.slowT > 0) { G.slowT -= dt; ts = 0.35; }
+  const sdt = dt * ts;
+
+  updatePlayer(sdt);
+  updateEnemies(sdt);
+  updateBoss(sdt);
+  updateMisc(sdt);
+  updateWorld(sdt);
+
+  if (G.choiceT > 0) {
+    G.choiceT -= dt;
+    if (G.choiceT <= 0) G.state = 'choice';
+  }
+
+  // camera
+  let target = clamp(G.player.x + G.player.w / 2 - G.W / 2, 0, WORLD_W - G.W);
+  if (G.boss) {
+    target = clamp(target, G.wall.gateX - 300, G.wall.gateX + 300 - G.W);
+  }
+  G.cam.x = lerp(G.cam.x, target, 0.12);
+}
+
+// menu navigation uses W/S too — handled via key names
+window.addEventListener('keydown', function (e) {
+  if (G.state !== 'menu') return;
+  const k = e.key.toLowerCase();
+  if (k === 'w' || k === 'arrowup') { G.menuSel = (G.menuSel + SKILLS.length - 1) % SKILLS.length; G.sfx.ui(); }
+  if (k === 's' || k === 'arrowdown') { /* covered by 'down' pressed too; avoid double-step */ }
+});
+
+let _last = 0, _acc = 0;
+const STEP = 1 / 60;
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (!_last) _last = t;
+  let dt = (t - _last) / 1000;
+  _last = t;
+  if (dt > 0.1) dt = 0.1;
+  _acc += dt;
+  while (_acc >= STEP) {
+    update(STEP);
+    G.pressed = {};
+    _acc -= STEP;
+  }
+  drawAll();
+}
+
+// expose for headless smoke-testing
+G._update = update;
+G._draw = drawAll;
+G._newGame = newGame;
+
+if (typeof document !== 'undefined' && document.getElementById) {
+  bootCanvas();
+  initInput();
+  newGame();
+  requestAnimationFrame(loop);
+}
+
+</script>
 </body>
 </html>
