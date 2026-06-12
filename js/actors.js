@@ -79,7 +79,7 @@ function meleeHit(rect, dmg, opts) {
     }
   }
   const b = G.boss;
-  if (b && b.phase < 4 && aabb(rect, b)) {
+  if (b && b.phase < 5 && aabb(rect, b)) {
     landed = hitBoss(dmg, opts) || landed;
   }
   if (opts.breakRock) {
@@ -142,7 +142,7 @@ function damagePlayer(d, from) {
   const fromFront = from == null || ((from.x > p.x) === (p.face === 1));
 
   if (p.block && fromFront) {
-    if (p.blockT < 0.14) {
+    if (p.blockT < (G.assist ? 0.26 : 0.14)) {
       // PERFECT PARRY — the lion roars
       p.inv = 0.45;
       G.sfx.parry();
@@ -552,12 +552,17 @@ function startBoss() {
 function hitBoss(dmg, opts) {
   const b = G.boss;
   if (!b) return false;
+  if (b.phase === 3) {
+    // the Devouring cannot be fought — only outrun
+    addPart(b.x + Math.random() * b.w, b.y + Math.random() * b.h, -30, -20, '#39ff6a', 0.3);
+    return false;
+  }
   if (b.phase === 2 && b.aflame <= 0) {
     if (!b.hinted) { b.hinted = true; msg('The swarm reforms! Only FIRE makes it commit — lure him to the gate braziers!', 5); }
     addPart(b.x + b.w / 2, b.y + 10, (Math.random() - 0.5) * 60, -30, '#39ff6a', 0.3);
     return false;
   }
-  if (b.phase === 3 && b.parryCd <= 0 && !(opts && opts.unblockable)) {
+  if (b.phase === 4 && b.parryCd <= 0 && !(opts && opts.unblockable)) {
     b.parryCd = 1.8;
     b.counter = 0.3;
     G.sfx.parry();
@@ -580,12 +585,13 @@ function bossPhaseEnd() {
     for (let i = 0; i < 10; i++) spawnEnemy('numberless', b.x + (Math.random() - 0.5) * 60, false);
     msg('THE SWARM CROWN — he was never one thing.', 4);
   } else if (b.phase === 2) {
-    b.phase = 3; b.hp = 110; b.maxhp = 110;
-    b.w = 10; b.h = 22; b.state = 'duel'; b.stateT = 1; b.parryCd = 0;
-    b.y = 60;
-    msg('THE FALSE ISKANDER — the horde has learned to be you.', 4);
-  } else if (b.phase === 3) {
-    b.phase = 4; b.hp = 1; b.maxhp = 1;
+    // Stage 3 — THE DEVOURING: he eats the world; you run
+    b.phase = 3; b.hp = 1; b.maxhp = 1;
+    b.w = 22; b.h = 46; b.chaseT = 12;
+    b.x = G.player.x + 130; b.vx = 0;
+    msg('THE DEVOURING — RUN WEST! HE EATS THE GROUND BEHIND YOU!', 5);
+  } else if (b.phase === 4) {
+    b.phase = 5; b.hp = 1; b.maxhp = 1;
     G.seal = { t: 0, need: Math.max(5, 8 - G.engineers), spawnT: 0 };
     msg('THE SEALING — you do not fight a flood. You BUILD. Hold E at the gate!', 6);
   }
@@ -613,7 +619,27 @@ function updateBoss(dt) {
 
   if (b.stun > 0) { b.vx *= 0.8; return; }
 
-  if (b.phase === 4) {
+  if (b.phase === 3) {
+    // THE DEVOURING: a wave of static rolls west, erasing geometry
+    b.chaseT -= dt;
+    b.vx = 0;
+    b.x -= 88 * dt;
+    for (let i = G.ramparts.length - 1; i >= 0; i--) if (G.ramparts[i].x > b.x - 12) G.ramparts.splice(i, 1);
+    for (let i = G.echoes.length - 1; i >= 0; i--) if (G.echoes[i].x > b.x - 12 && G.echoes[i].segI < 0) G.echoes.splice(i, 1);
+    for (const s of G.wall.segs) if (Math.abs(s.x + s.w / 2 - (b.x + b.w / 2)) < 20) damageSeg(s, 6 * dt);
+    if (p.x + p.w > b.x - 4 && p.x < b.x + b.w && p.y + p.h > b.y) damagePlayer(1.5, b);
+    if (Math.random() < dt * 18) addPart(b.x + Math.random() * b.w, b.y + Math.random() * b.h, -40, -20, Math.random() < 0.5 ? '#39ff6a' : '#b03cff', 0.4);
+    if ((b.chaseT < 10.5 && p.x < G.wall.x0 - 120) || b.chaseT <= 0) {
+      b.phase = 4; b.hp = 110; b.maxhp = 110;
+      b.w = 10; b.h = 22; b.x = p.x + 150; b.y = 60;
+      b.state = 'duel'; b.stateT = 1; b.parryCd = 0;
+      G.shake = 6; G.sfx.bossRoar();
+      msg('IT COALESCES — A KING-SHAPE WEARING YOUR FACE.', 4);
+    }
+    return;
+  }
+
+  if (b.phase === 5) {
     // The Sealing: hold the gate while the tide pours in
     const s = G.seal;
     s.spawnT -= dt;
@@ -697,7 +723,7 @@ function updateBoss(dt) {
     }
   }
 
-  if (b.phase === 3) {
+  if (b.phase === 4) {
     // False Iskander: a 1v1 duel against your own kit
     if (b.counter && b.counter > 0) {
       b.counter -= dt;
@@ -775,7 +801,7 @@ function updateMisc(dt) {
       for (const e of G.enemies) {
         if (aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, e)) { hurtEnemy(e, pr.dmg, {}); used = true; break; }
       }
-      if (!used && G.boss && G.boss.phase < 4 && aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, G.boss)) { hitBoss(pr.dmg, {}); used = true; }
+      if (!used && G.boss && G.boss.phase < 5 && aabb({ x: pr.x - 2, y: pr.y - 2, w: 5, h: 8 }, G.boss)) { hitBoss(pr.dmg, {}); used = true; }
       if (used) { G.projectiles.splice(i, 1); continue; }
     }
     if (pr.kind === 'spear' && pr.y > terrainY(pr.x, true)) { G.projectiles.splice(i, 1); continue; }

@@ -8,6 +8,7 @@ window.G = {
   time: 0, slowT: 0, shake: 0, flash: 0, flashCol: '#fff',
   cam: { x: 0, y: 0 },
   doxa: 0, mythos: 0, iron: 6, brass: 0, engineers: 0, age: 0,
+  assist: false, ng: 0, cut: null, bpSel: 0,
   skills: {},
   flags: { shrine: false, reachedWall: false, bossDone: false, pourHint: false },
   msgs: [],
@@ -89,6 +90,7 @@ const KEYMAP = {
   'l': 'shield', 'v': 'shield',
   'shift': 'dash',
   'e': 'use', 'g': 'garrison', 'q': 'menu',
+  'm': 'map', 'n': 'ngplus', 't': 'assist',
   '1': 's1', '2': 's2', '3': 's3', '4': 's4', '5': 's5',
   'enter': 'enter', 'escape': 'esc', 'p': 'esc', 'r': 'restart',
 };

@@ -118,10 +118,24 @@ for (let i = 0; i < SK.length; i++) {
 run(2, null, ['menu']);
 assert(G.state === 'play', 'skill menu closes');
 
-// commune at Siwa
+// commune at Siwa — now a crowning cinematic
 G.player.x = G.world.shrine.x; G.player.y = 100;
-run(30, null, ['use']);
-assert(G.flags.shrine, 'Siwa shrine grants the horns');
+run(5, null, ['use']);
+assert(G.state === 'cutscene', 'Siwa crowning cinematic plays');
+for (let i = 0; i < 8; i++) run(3, null, ['enter']);
+assert(G.flags.shrine && G.state === 'play', 'Siwa shrine grants the horns');
+
+// Roxana of Sogdia shares the old names
+const mBefore = G.mythos;
+G.player.x = 2450; G.player.y = 100;
+run(5, null, ['use']);
+assert(G.state === 'cutscene', 'Roxana camp dialogue plays');
+for (let i = 0; i < 8; i++) run(3, null, ['enter']);
+assert(G.mythos === mBefore + 1, 'Roxana grants a steppe relic (+1 Mythos)');
+
+// parry assist accessibility toggle
+run(2, null, ['assist']);
+assert(G.assist === true, 'parry-assist toggles on');
 
 // teleport to the Wall, confirm arrival flag + tier 3
 G.player.x = G.wall.x0 - 100; G.player.y = 100;
@@ -147,6 +161,18 @@ for (const seg of G.wall.segs) {
   run(225, ['use'], ['use']);     // tap to start the pour, hold to channel it
   assert(seg.stage === 2, 'segment ' + (seg.i + 1) + ' fully built');
 }
+
+// blueprint mode + fast travel along the king's road
+G.waveSys.active = false;
+G.enemies.length = 0;
+run(2, null, ['map']);
+assert(G.state === 'blueprint', 'blueprint mode opens');
+run(2, null, ['right']); run(2, null, ['right']);   // select segment 2 (brass-sealed)
+run(2, null, ['enter']);
+assert(G.state === 'play' && Math.abs(G.player.x - (G.wall.segs[1].x - 8)) < 2, 'fast travel to a brass beacon');
+run(2, null, ['map']);
+run(2, null, ['enter']);                            // camp is selection 0
+assert(Math.abs(G.player.x - G.world.camp.x) < 2, 'fast travel back to the forge-camp');
 
 // cast every active skill
 run(10, null, ['s1']);
@@ -176,7 +202,7 @@ G.waveSys.active = false; G.waveSys.wave = 6;
 sandbox.startBoss();
 assert(G.boss && G.boss.phase === 1, 'boss spawns');
 G.player.maxhp = 1000; G.player.hp = 1000; // survive the test
-for (let phase = 1; phase <= 3; phase++) {
+for (const phase of [1, 2]) {
   let guard = 0;
   while (G.boss && G.boss.phase === phase && guard++ < 4000) {
     G.boss.aflame = 2;          // pretend we are at the braziers
@@ -187,7 +213,21 @@ for (let phase = 1; phase <= 3; phase++) {
   }
   assert(guard < 4000, 'boss phase ' + phase + ' completes');
 }
-assert(G.boss && G.boss.phase === 4 && G.seal, 'the Sealing begins');
+assert(G.boss && G.boss.phase === 3, 'the Devouring chase begins');
+G.player.x = G.wall.x0 - 130; G.player.y = 100;     // outrun it west
+run(120);
+assert(G.boss && G.boss.phase === 4, 'outrunning the Devouring forces it to coalesce');
+{
+  let guard = 0;
+  while (G.boss && G.boss.phase === 4 && guard++ < 4000) {
+    G.boss.parryCd = 1;
+    G.player.x = G.boss.x - 13; G.player.y = G.boss.y - 2; G.player.face = 1;
+    run(3, null, ['sword']);
+    G.enemies.length = 0;
+  }
+  assert(guard < 4000, 'boss phase 4 (False Iskander) completes');
+}
+assert(G.boss && G.boss.phase === 5 && G.seal, 'the Sealing begins');
 G.player.x = G.wall.gateX - 4; G.player.y = 120;
 let guard = 0;
 while (G.boss && guard++ < 3000) { G.enemies.length = 0; run(5, ['use']); }
@@ -210,6 +250,11 @@ run(2, null, ['right']);
 run(2, null, ['enter']);
 assert(G.state === 'ending' && G.ending === 'east', 'Ending II renders');
 run(10);
+
+// New Game+ carries the king's years and myth forward
+G.skills.roar = true; G.age = 4;
+run(2, null, ['ngplus']);
+assert(G.state === 'play' && G.ng === 1 && G.skills.roar === true && G.age === 4, 'New Game+ carries skills and age as canon');
 
 // long idle soak on a fresh game: waves fire on the doom-clock
 run(2, null, ['restart']);

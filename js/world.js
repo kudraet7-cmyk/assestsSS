@@ -82,13 +82,13 @@ function initWorld() {
   ];
   for (const r of rocks) r.y = ground[Math.floor(r.x / TS)] - r.h;
 
-  // relics grant Mythos
+  // relics grant Mythos (each carries codex lore)
   const relicXs = [330, 760, 1200, 1540, 1975, 2400, 2640, 2890, 3140, 4640, 4880];
-  const relics = relicXs.map(function (x) {
+  const relics = relicXs.map(function (x, i) {
     let y = ground[Math.floor(x / TS)] - 12;
     for (const p of plats) if (x >= p.x && x <= p.x + p.w) y = Math.min(y, p.y - 12);
     if (water[Math.floor(x / TS)]) y = WATER_Y - 12;   // the river relic needs Anointed Stride
-    return { x: x, y: y, got: false };
+    return { x: x, y: y, got: false, i: i };
   });
 
   // ore nodes east of the Wall (sortie loot)
@@ -133,6 +133,11 @@ function initWorld() {
     relics: relics, nodes: nodes, cages: cages, decos: decos,
     shrine: { x: 1450, used: false },
     camp: { x: 3380 },
+    npcs: [
+      { id: 'oracle', x: 1484, talks: 0 },
+      { id: 'roxana', x: 2450, talks: 0 },
+      { id: 'hephaestion', x: 3352, talks: 0 },
+    ],
   };
 
   // ---- the Wall: 8 segments spanning the pass ----
@@ -247,7 +252,7 @@ function updateWaves(dt) {
   }
   if (ws.bossNext) {
     ws.bossT -= dt;
-    if (ws.bossT <= 0) startBoss();
+    if (ws.bossT <= 0) startBossCinematic();
     return;
   }
   ws.t -= dt;
@@ -354,15 +359,22 @@ function tryInteract(p, dt) {
     }
   }
 
-  // --- Siwa shrine: the ram horns are earned, not given ---
+  // --- Siwa shrine: the ram horns are earned in the crowning cinematic ---
   const sh = G.world.shrine;
   if (!sh.used && Math.abs(px - sh.x) < 22) {
-    sh.used = true; G.flags.shrine = true; G.mythos += 2;
-    G.flash = 0.9; G.flashCol = '#f3cf6b';
-    G.sfx.relic(); G.sfx.roar();
-    msg('THE ORACLE OF AMMON SPEAKS: "Son of the god."', 4.5);
-    msg('The ram horns ignite. TIER 2 skills unlocked in the menu (Q). +2 Mythos', 5);
+    sh.used = true;
+    startCutscene(SIWA_SCENE, sh.x, function () {
+      G.flags.shrine = true; G.mythos += 2;
+      G.flash = 0.9; G.flashCol = '#f3cf6b';
+      G.sfx.relic(); G.sfx.roar();
+      msg('THE RAM HORNS IGNITE — Tier 2 open in the skill tree (Q). +2 Mythos', 5);
+    });
     return;
+  }
+
+  // --- companions ---
+  for (const n of G.world.npcs) {
+    if (Math.abs(px - n.x) < 20) { npcTalk(n); return; }
   }
 
   // --- rest at the forge-camp ---
@@ -388,7 +400,8 @@ function updateWorld(dt) {
     if (!r.got && Math.abs(p.x + p.w / 2 - r.x) < 12 && Math.abs(p.y + p.h / 2 - r.y) < 16) {
       r.got = true; G.mythos++; G.stats.relics++;
       G.sfx.relic(); G.flash = 0.35; G.flashCol = '#b08fdd';
-      msg('RELIC OF MYTH RECOVERED  (+1 Mythos)', 2.5);
+      msg('RELIC OF MYTH  (+1 Mythos)', 2);
+      msg('CODEX — ' + RELIC_LORE[r.i % RELIC_LORE.length], 5);
     }
   }
   // corruption exposure drain (sandbox-survival pressure)

@@ -75,8 +75,27 @@ palette-inverted duelist who parries you — feint, strike twice), and the
 Sealing — where you stop fighting and *build*, holding the gate while molten
 brass entombs him mid-lunge, forever visible in the Wall.
 
+**Yajuj-Khagan is five full stages:** the Rider, the Swarm Crown, **the
+Devouring** (a real-time chase — he erases ramparts, Echoes, and wall
+segments behind you while you run west), the False Iskander, and the Sealing.
+
 **The Final Choice.** The last gap is one sprite wide. Seal it from the west, or
-step through first. Two endings, one missing pixel.
+step through first. Two endings, one missing pixel — and **New Game+** (`N` on
+an ending) carries the king's aged sprite and learned myth forward as canon.
+
+**Cinematics & companions.** The Siwa crowning plays as a letterboxed
+in-engine cutscene; Hephaestion, Roxana of Sogdia, and the Oracle hold
+camp dialogues (`E`); each of the 11 relics carries codex lore.
+
+**Forge blueprint mode (`M`).** The whole wall as one strategic tapestry —
+segment states, HP, garrisons, weak seams, the corruption front — with
+fast travel to the camp and any brass-sealed beacon. Health is diegetic:
+the lion shield in the HUD cracks as the king bleeds. A parry-assist
+accessibility toggle (`T`) widens the parry window.
+
+**AAA roadmap.** `docs/UE5_PRODUCTION_PLAN.md` maps every pillar of this
+prototype onto a UE5.4 vertical-slice plan (Nanite/Lumen/GAS/Mass/Niagara/
+MetaSounds), with the prototype as the tuned design reference.
 
 ## Tests
 

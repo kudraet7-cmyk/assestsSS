@@ -14,7 +14,8 @@ function drawHero(p, o) {
   const X = Math.round(p.x) - 3, Y = Math.round(p.y);
   const remap = {};
   if (o.corrupt) Object.assign(remap, CORRUPT_MAP);
-  else if (G.age > 0) remap[HR] = mixc(HR, '#cfcfcf', clamp(G.age / 8, 0, 1));
+  else if (G.age > 0 && !o.remap) remap[HR] = mixc(HR, '#cfcfcf', clamp(G.age / 8, 0, 1));
+  if (o.remap) Object.assign(remap, o.remap);
   const horns = o.horns != null ? o.horns : G.flags.shrine;
   if (!horns) remap[HG] = null;        // the ram horns are earned at Siwa
   const so = { flip: face === -1, remap: remap, glitch: o.glitch, mono: o.mono, scale: sc };
@@ -25,7 +26,7 @@ function drawHero(p, o) {
   const atk = p.atk || null;
   const moving = Math.abs(p.vx || 0) > 5;
   const stride = moving && Math.sin(p.runPhase || 0) > 0;
-  if (!p.block && !(atk && atk.kind === 'bash')) st(SHIELD_BACK, 0, 7);
+  if (!o.noGear && !p.block && !(atk && atk.kind === 'bash')) st(SHIELD_BACK, 0, 7);
   st(HERO_BODY, 0, 0);
   st(stride ? LEGS_B : LEGS_A, 0, 16);
   if (atk && (atk.kind === 'spear' || atk.kind === 'lunge')) st(SPEAR_H, 11, 7);
@@ -36,7 +37,7 @@ function drawHero(p, o) {
   } else if (p.charge > 0) {
     FR(X + (face === 1 ? -8 : 20), Y + 6, 6, 1, '#f3cf6b');
     FR(X + (face === 1 ? -10 : 22), Y + 10, 6, 1, '#f3cf6b');
-  } else if (!p.block) st(SPEAR_V, 13, -5);
+  } else if (!p.block && !o.noGear) st(SPEAR_V, 13, -5);
   if (p.block || (atk && atk.kind === 'bash')) st(SHIELD_FRONT, atk ? 11 : 9, 5);
   // Tier-2 divinity shimmer
   if (horns && !o.corrupt && Math.random() < 0.12) {
@@ -99,6 +100,16 @@ function drawBoss() {
       G.ctx.globalAlpha = 1;
     }
   } else if (b.phase === 3) {
+    // the Devouring: a rolling curtain of static with a pale maw
+    for (let yy = 0; yy < b.h + 10; yy += 4) {
+      const wob = Math.sin(yy * 0.2 + t * 9) * 3;
+      const n = hash2(yy, Math.floor(t * 11));
+      FR(b.x + wob, b.y - 8 + yy, 5 + n * 18, 3, n < 0.45 ? '#39ff6a' : n < 0.7 ? '#b03cff' : '#1c222c');
+    }
+    FR(b.x - 6, b.y + 16, 6, 3, '#dfe3e8');
+    FR(b.x - 6, b.y + 26, 6, 3, '#dfe3e8');
+    FR(b.x - 3, b.y + 21, 3, 3, '#ff3963');
+  } else if (b.phase === 4) {
     drawHero({ x: b.x, y: b.y, w: 10, h: 22, face: G.player.x < b.x ? -1 : 1, vx: b.vx, runPhase: t * 10, block: b.parryCd <= 0, atk: null, charge: 0 },
       { corrupt: true, glitch: true, horns: true });
   }
@@ -344,6 +355,15 @@ function drawLandmarks(camX) {
     FR(r.x + 8, r.y + 4, 2, r.h - 10, '#54462f');
     FR(r.x + 4, r.y + r.h / 2, r.w - 8, 2, '#54462f');
   }
+  // companions & oracles
+  for (const n of w.npcs) {
+    if (n.x < camX - 30 || n.x > camX + G.W + 30) continue;
+    const ngy = terrainY(n.x, true);
+    if (ngy > 900) continue;
+    drawHero({ x: n.x, y: ngy - 22, w: 10, h: 22, face: G.player.x < n.x ? -1 : 1, vx: 0, runPhase: 0, block: false, atk: null, charge: 0 },
+      { remap: NPC_REMAPS[n.id], horns: false, noGear: n.id === 'oracle' });
+    if (Math.abs(G.player.x - n.x) < 20 && G.state === 'play') drawPrompt(n.x, ngy - 32, 'E: ' + n.id.toUpperCase());
+  }
   // cages
   for (const cg of w.cages) {
     if (cg.freed) continue;
@@ -436,7 +456,7 @@ function drawWall(camX) {
     G.ctx.globalAlpha = 1;
   }
   // seal progress during the finale
-  if (G.seal && G.boss && G.boss.phase === 4) {
+  if (G.seal && G.boss && G.boss.phase === 5) {
     const gx = wl.gateX;
     FR(gx - 16, 120, 32, 5, '#16121d');
     FR(gx - 15, 121, 30 * clamp(G.seal.t / G.seal.need, 0, 1), 3, '#f3a33c');
@@ -559,18 +579,31 @@ function drawHUD() {
   const p = G.player;
   ctx.font = '7px monospace';
   ctx.textAlign = 'left';
-  // hearts
-  for (let i = 0; i < Math.ceil(p.maxhp); i++) drawHeart(12 + i * 7, 12, p.hp > i);
+  // diegetic health: the lion shield cracks as the king bleeds
+  drawSprite(SHIELD_FRONT, 12, 11, { scale: 2 });
+  const hpFrac = clamp(p.hp / p.maxhp, 0, 1);
+  const cracks = Math.ceil((1 - hpFrac) * 7);
+  for (let i = 0; i < cracks; i++) {
+    let cx2 = 13 + Math.floor(hash2(i, 1) * 11), cy2 = 12 + Math.floor(hash2(i, 2) * 4);
+    for (let s2 = 0; s2 < 5; s2++) {
+      FR(cx2, cy2, 1, 2, '#16121d');
+      cx2 += hash2(i, s2 + 3) < 0.5 ? -1 : 1;
+      cy2 += 2 + Math.floor(hash2(i, s2 + 9) * 2);
+    }
+  }
+  if (p.hp <= 2 && Math.floor(G.time * 4) % 2) FR(11, 9, 16, 1, '#ff3963');
+  FR(12, 33, 14, 2, '#16121d');
+  FR(12, 33, Math.round(14 * hpFrac), 2, hpFrac > 0.3 ? '#f3cf6b' : '#ff3963');
   // currencies & materials
-  FR(12, 22, 4, 4, '#f3cf6b');
-  ctx.fillStyle = '#f3cf6b'; ctx.fillText('' + Math.floor(G.doxa), 19, 27);
-  FR(44, 22, 4, 4, '#b08fdd');
-  ctx.fillStyle = '#b08fdd'; ctx.fillText('' + G.mythos, 51, 27);
-  FR(70, 22, 4, 4, '#8a93a0');
-  ctx.fillStyle = '#8a93a0'; ctx.fillText('' + G.iron, 77, 27);
-  FR(96, 22, 4, 4, '#d9a85a');
-  ctx.fillStyle = '#d9a85a'; ctx.fillText('' + G.brass, 103, 27);
-  if (G.engineers > 0) { ctx.fillStyle = '#7d9c48'; ctx.fillText('ENG x' + G.engineers, 122, 27); }
+  FR(12, 38, 4, 4, '#f3cf6b');
+  ctx.fillStyle = '#f3cf6b'; ctx.fillText('' + Math.floor(G.doxa), 19, 43);
+  FR(44, 38, 4, 4, '#b08fdd');
+  ctx.fillStyle = '#b08fdd'; ctx.fillText('' + G.mythos, 51, 43);
+  FR(70, 38, 4, 4, '#8a93a0');
+  ctx.fillStyle = '#8a93a0'; ctx.fillText('' + G.iron, 77, 43);
+  FR(96, 38, 4, 4, '#d9a85a');
+  ctx.fillStyle = '#d9a85a'; ctx.fillText('' + G.brass, 103, 43);
+  if (G.engineers > 0) { ctx.fillStyle = '#7d9c48'; ctx.fillText('ENG x' + G.engineers, 122, 43); }
 
   // doom-clock
   if (G.flags.reachedWall && !G.flags.bossDone) {
@@ -579,9 +612,11 @@ function drawHUD() {
     if (G.boss) {
       const b = G.boss;
       ctx.fillStyle = '#ff3963';
-      const pn = ['', 'THE RIDER', 'THE SWARM CROWN', 'THE FALSE ISKANDER', 'THE SEALING'][b.phase];
+      const pn = ['', 'THE RIDER', 'THE SWARM CROWN', 'THE DEVOURING', 'THE FALSE ISKANDER', 'THE SEALING'][b.phase];
       ctx.fillText('YAJUJ-KHAGAN — ' + pn, G.W / 2, 18);
-      if (b.phase < 4) {
+      if (b.phase === 3) {
+        ctx.fillText('RUN WEST  ' + fmtTime(b.chaseT), G.W / 2, 27);
+      } else if (b.phase < 5) {
         FR(G.W / 2 - 60, 21, 120, 5, '#16121d');
         FR(G.W / 2 - 59, 22, 118 * clamp(b.hp / b.maxhp, 0, 1), 3, '#ff3963');
       }
@@ -704,6 +739,93 @@ function drawMenu() {
   ctx.textAlign = 'left';
 }
 
+// in-engine cinematic: letterbox + performed lines
+function drawCutscene() {
+  const c2 = G.cut;
+  if (!c2) return;
+  const ctx = G.ctx;
+  FR(0, 0, G.W, 26, '#050407');
+  FR(0, G.H - 34, G.W, 34, '#050407');
+  const ln = c2.lines[Math.min(c2.i, c2.lines.length - 1)];
+  ctx.textAlign = 'center';
+  ctx.font = '7px monospace';
+  if (ln.who) {
+    ctx.fillStyle = '#c9912f';
+    ctx.fillText('— ' + ln.who + ' —', G.W / 2, G.H - 23);
+  }
+  ctx.fillStyle = '#f4ead2';
+  ctx.fillText(ln.text, G.W / 2, G.H - 12);
+  ctx.fillStyle = '#54462f';
+  ctx.fillText(G.touchMode ? 'TAP' : 'ENTER', G.W - 24, G.H - 4);
+  ctx.textAlign = 'left';
+}
+
+// FORGE blueprint mode: the whole Wall as one strategic tapestry
+function drawBlueprint() {
+  const ctx = G.ctx;
+  ctx.globalAlpha = 0.88;
+  FR(0, 0, G.W, G.H, '#0b0908');
+  ctx.globalAlpha = 1;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3cf6b';
+  ctx.fillText('THE IRON VERSE — BLUEPRINT', G.W / 2, 28);
+  ctx.font = '7px monospace';
+
+  // selectable: [camp, seg1..seg8]
+  const bw = 34, x0 = (G.W - 9 * bw) / 2;
+  for (let i = 0; i < 9; i++) {
+    const bx = x0 + i * bw, by = 52, bh = 56;
+    const sel = G.bpSel === i;
+    FR(bx, by, bw - 4, bh, '#16121d');
+    if (sel) {
+      FR(bx - 1, by - 1, bw - 2, 1, '#f3cf6b'); FR(bx - 1, by + bh, bw - 2, 1, '#f3cf6b');
+      FR(bx - 1, by, 1, bh, '#f3cf6b'); FR(bx + bw - 4, by, 1, bh, '#f3cf6b');
+    }
+    if (i === 0) {
+      FR(bx + 8, by + 24, 14, 12, '#94805f');
+      FR(bx + 11, by + 18, 8, 6, '#b09a78');
+      drawSprite(FLAME_A, bx + 12, by + 38);
+      ctx.fillStyle = '#7d9c48';
+      ctx.fillText('CAMP', bx + 15, by + bh + 10);
+    } else {
+      const s = G.wall.segs[i - 1];
+      const c = s.stage === 0 ? '#2a2433' : s.stage === 1 ? '#8a93a0' : '#d9a85a';
+      FR(bx + 6, by + 10, 18, 36, c);
+      if (s.stage > 0) {
+        FR(bx + 6, by + 4, 18, 3, '#16121d');
+        FR(bx + 7, by + 5, 16 * clamp(s.hp / s.maxhp, 0, 1), 1, s.hp / s.maxhp > 0.4 ? '#7d9c48' : '#ff3963');
+      }
+      if (s.weak) FR(bx + 14, by + 14, 2, 28, '#1d2434');
+      if (s.garrison) drawSprite(SHIELD_BACK, bx + 12, by + 1);
+      if (s.i === G.wall.gateIndex) { ctx.fillStyle = '#f3cf6b'; ctx.fillText('GATE', bx + 15, by + bh + 10); }
+      else { ctx.fillStyle = '#8a7d6a'; ctx.fillText('' + i, bx + 15, by + bh + 10); }
+    }
+  }
+  // world ribbon: acts, corruption front, markers
+  const rw = 360, rx = (G.W - rw) / 2, ry = 142;
+  for (let i = 0; i < 36; i++) {
+    const wx = (i + 0.5) / 36 * WORLD_W;
+    FR(rx + i * 10, ry, 10, 10, palAt(wx).ground);
+  }
+  const sc2 = rw / WORLD_W;
+  ctx.globalAlpha = 0.65;
+  const fx2 = rx + clamp(G.front.x, 0, WORLD_W) * sc2;
+  FR(fx2, ry - 2, rx + rw - fx2, 14, '#b03cff');
+  ctx.globalAlpha = 1;
+  FR(rx + G.world.shrine.x * sc2, ry + 2, 2, 6, '#b08fdd');
+  FR(rx + G.world.camp.x * sc2, ry + 2, 2, 6, '#7d9c48');
+  for (const s of G.wall.segs) if (s.stage > 0) FR(rx + s.x * sc2, ry, 1, 10, s.stage === 2 ? '#d9a85a' : '#8a93a0');
+  FR(rx + G.player.x * sc2 - 1, ry - 3, 3, 16, '#f3cf6b');
+  ctx.fillStyle = '#8a7d6a';
+  ctx.fillText('IRON ' + G.iron + '   BRASS ' + G.brass + '   ENGINEERS ' + G.engineers +
+    '   RELICS ' + G.stats.relics + '/11   NEXT WAVE ' + (G.waveSys.active ? 'NOW' : fmtTime(G.waveSys.t)), G.W / 2, ry + 28);
+  ctx.fillStyle = '#d8b56f';
+  ctx.fillText('LEFT/RIGHT select — ENTER travel (camp & brass-sealed beacons) — M close', G.W / 2, ry + 44);
+  ctx.textAlign = 'left';
+  drawMeander();
+}
+
 function drawTitle() {
   const ctx = G.ctx;
   FR(0, 0, G.W, G.H, '#1a1410');
@@ -735,6 +857,7 @@ function drawTitle() {
     'MOVE A/D    JUMP W or SPACE    DASH SHIFT    DROP S+JUMP',
     'SWORD J     SPEAR K     SHIELD hold L (parry = lion roar)',
     'E interact/build/mine    Q skill tree    1-5 learned skills',
+    'M blueprint & fast travel    T parry-assist    N new game+ (endings)',
     '',
     'March east. Earn the horns at Siwa. Reach the Roof of the World.',
     'Build the Wall before Yajuj & Majuj devour the art itself.',
@@ -806,22 +929,24 @@ function drawEnding() {
     'Iskander seals the gate from the west, and stays.',
     'He grows old in sight of his own iron verse, the gold of him',
     'fading one palette index at a time.',
+    'Hephaestion plants the garrison banners; the Echoes keep his watch.',
     '',
     'The Wall holds. Somewhere behind the brass,',
     'the horde still dreams of him.',
   ] : [
     'He steps through, and the gate seals behind him —',
     'the last missing pixel of the old world, filled by a king.',
+    'On the western side, Hephaestion waits a full year before',
+    'he lets them carve the word KING above the gate.',
     '',
     'The Wall holds. And travellers swear that beyond it,',
-    'on nights when the aurora screams,',
     'a golden light still fights in the dark.',
   ];
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], G.W / 2, 60 + i * 11);
   ctx.fillStyle = '#d8b56f';
   ctx.fillText('Waves broken: ' + G.stats.waves + '   Foes slain: ' + G.stats.kills + '   Relics: ' + G.stats.relics + '   Years spent: ' + G.age, G.W / 2, 218);
   ctx.fillStyle = '#8a7d6a';
-  ctx.fillText('PRESS R TO BEGIN AGAIN', G.W / 2, 240);
+  ctx.fillText('R: BEGIN AGAIN      N: NEW GAME+ — carry the king\'s years forward', G.W / 2, 240);
   ctx.textAlign = 'left';
   drawMeander();
 }
@@ -909,8 +1034,13 @@ function drawAll() {
     FR(0, 0, G.W, G.H, G.flashCol);
     ctx.globalAlpha = 1;
   }
-  drawHUD();
-  drawMeander();
-  if (G.state === 'menu') drawMenu();
-  if (G.state === 'choice') drawChoice();
+  if (G.state === 'cutscene') {
+    drawCutscene();
+  } else {
+    drawHUD();
+    drawMeander();
+    if (G.state === 'menu') drawMenu();
+    if (G.state === 'choice') drawChoice();
+    if (G.state === 'blueprint') drawBlueprint();
+  }
 }

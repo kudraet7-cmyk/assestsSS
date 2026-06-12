@@ -148,6 +148,19 @@ CORRUPT_MAP[TU] = '#566057'; CORRUPT_MAP[B1] = '#1c222c';  CORRUPT_MAP[B2] = '#2
 CORRUPT_MAP[B3] = '#16121d'; CORRUPT_MAP[WD] = '#2a2433';  CORRUPT_MAP[TP] = GR;
 CORRUPT_MAP[BL] = MG;        CORRUPT_MAP[K] = RD;
 
+// Companions reuse the hero matrices through their own palette remaps:
+const NPC_REMAPS = {
+  oracle: {},
+  hephaestion: {},
+  roxana: {},
+};
+NPC_REMAPS.oracle[G1] = '#6b5a7d'; NPC_REMAPS.oracle[G2] = '#8f7bb0'; NPC_REMAPS.oracle[G3] = '#b08fdd';
+NPC_REMAPS.oracle[CL] = '#b08fdd'; NPC_REMAPS.oracle[C2] = '#8f7bb0'; NPC_REMAPS.oracle[HR] = '#e8e0cc';
+NPC_REMAPS.hephaestion[G1] = B1; NPC_REMAPS.hephaestion[G2] = B2; NPC_REMAPS.hephaestion[G3] = B3;
+NPC_REMAPS.hephaestion[CL] = '#8f3b2f'; NPC_REMAPS.hephaestion[C2] = '#6e2c24';
+NPC_REMAPS.roxana[G1] = '#3a4a63'; NPC_REMAPS.roxana[G2] = '#5a6e8c'; NPC_REMAPS.roxana[G3] = '#8ca3c4';
+NPC_REMAPS.roxana[CL] = '#3f6655'; NPC_REMAPS.roxana[C2] = '#2e4c3f'; NPC_REMAPS.roxana[HR] = '#2a1d12';
+
 // ---------- ENVIRONMENT TILES ----------
 // Surface terrain (16x16): grass over earth over deep earth
 const TILE_GRASS = [

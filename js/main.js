@@ -1,6 +1,102 @@
 // ============================================================
-// ISKANDER — main loop & state machine
+// ISKANDER — main loop, state machine, cinematics, blueprint
 // ============================================================
+
+// ---------- scripted scenes ----------
+const SIWA_SCENE = [
+  { who: 'THE ORACLE OF SIWA', text: 'You walked the sand that eats armies, and the sand stood aside.' },
+  { who: 'THE ORACLE OF SIWA', text: 'Son of Ammon. Two-Horned. The east has waited long for your name.' },
+  { who: 'ISKANDER', text: 'I came to ask whose son I am.' },
+  { who: 'THE ORACLE OF SIWA', text: 'No. You came to ask permission to become what you already are.' },
+  { who: '', text: 'The ram horns ignite upon the golden helmet.' },
+];
+const BOSS_SCENE = [
+  { who: 'HEPHAESTION', text: 'Iskander — the watch-fires past the third tower just went out.' },
+  { who: 'ROXANA', text: 'That is no storm. The night itself is walking.' },
+  { who: 'YAJUJ-KHAGAN', text: 'WE ARE TEN THOUSAND WHISPERS, LITTLE KING. OPEN YOUR GATE.' },
+];
+const NPC_LINES = {
+  hephaestion: [
+    'The men dream in languages they never learned. Keep building.',
+    'Whatever you raise out there — build a gate in it. Men must be able to come home.',
+    'I will hold the camp. I always hold the camp.',
+  ],
+  hephaestion_after: ['It holds. By every god we ever doubted, Iskander — it holds.'],
+  roxana_first: [
+    'My grandmothers called them the Drinkers of Rivers. They sang the names to frighten us.',
+    'They are not coming for your empire, Two-Horned. They are coming for the world.',
+    'Take this. The steppe remembers every wall that failed. Make yours different.',
+  ],
+  roxana: ['Ride east only with iron in both hands.'],
+  oracle: [
+    'What I crowned at Siwa frightens me now.',
+    'The horns were never a gift, Iskander. They were a key.',
+  ],
+};
+const RELIC_LORE = [
+  'A laurel of Chaironeia. The first wall he broke was a line of men.',
+  'A Tyrian coin, fire-blackened. Cities learn his name by burning.',
+  'A reed from the Nile. Egypt did not resist; it recognized.',
+  'An oracle bone from Siwa, split clean down the middle.',
+  'A Persian seal, its king\'s face worn smooth by thumbs.',
+  'A steppe arrowhead that has never once missed a river.',
+  'A clay tablet: the same word for "wall" and for "promise".',
+  'An iron tooth too large for any wolf. It is still growing.',
+  'A child\'s drawing of a horde: scribbles devouring the page edge.',
+  'A frost-cracked horn that screams when the aurora pulses.',
+  'A single missing pixel of the world, kept in a reliquary.',
+];
+
+function startCutscene(lines, focusX, onDone) {
+  G.cut = { lines: lines, i: 0, t: 0, focusX: focusX, onDone: onDone };
+  G.state = 'cutscene';
+}
+function startBossCinematic() {
+  startCutscene(BOSS_SCENE, G.wall.gateX, function () { startBoss(); });
+}
+function npcTalk(n) {
+  let lines, after = null;
+  if (n.id === 'hephaestion') {
+    lines = G.flags.bossDone ? NPC_LINES.hephaestion_after : [NPC_LINES.hephaestion[n.talks % 3]];
+  } else if (n.id === 'roxana') {
+    if (n.talks === 0) {
+      lines = NPC_LINES.roxana_first;
+      after = function () { G.mythos++; msg('Roxana presses a steppe relic into your hand. (+1 Mythos)', 3.5); };
+    } else lines = NPC_LINES.roxana;
+  } else {
+    if (!G.flags.shrine) { msg('The Oracle gazes past you, toward the shrine.', 2.5); return; }
+    lines = NPC_LINES.oracle;
+  }
+  n.talks++;
+  startCutscene(lines.map(function (t) { return { who: n.id.toUpperCase(), text: t }; }), n.x, after);
+}
+
+function tryFastTravel() {
+  if (G.waveSys.active || G.boss) { G.sfx.deny(); msg('No travel while the horde moves.', 2.5); return; }
+  const p = G.player;
+  if (G.bpSel === 0) p.x = G.world.camp.x;
+  else {
+    const s = G.wall.segs[G.bpSel - 1];
+    if (s.stage < 2) { G.sfx.deny(); msg('Only brass-sealed segments hold a travel beacon.', 2.5); return; }
+    p.x = s.x - 8;
+  }
+  p.y = 60; p.vx = 0; p.vy = 0;
+  G.cam.x = clamp(p.x - G.W / 2, 0, WORLD_W - G.W);
+  G.state = 'play';
+  G.sfx.relic();
+  msg('You travel the king\'s road.', 2);
+}
+
+function newGamePlus() {
+  const keep = { skills: G.skills, age: G.age, assist: G.assist, ng: (G.ng || 0) + 1 };
+  newGame();
+  G.skills = keep.skills; G.age = keep.age; G.assist = keep.assist; G.ng = keep.ng;
+  G.player.maxhp = Math.max(7, 10 - G.age * 0.5);
+  G.player.hp = G.player.maxhp;
+  G.state = 'play';
+  msg('NEW GAME+ ' + G.ng + ' — the aged king marches again, his myth intact.', 5);
+}
+
 function newGame() {
   G.state = 'title';
   G.time = 0; G.slowT = 0; G.shake = 0; G.flash = 0;
@@ -36,12 +132,39 @@ function update(dt) {
     if (G.msgs[i].t <= 0) G.msgs.splice(i, 1);
   }
 
+  if (G.pressed.assist && (G.state === 'title' || G.state === 'play')) {
+    G.assist = !G.assist;
+    msg('PARRY ASSIST ' + (G.assist ? 'ON — wider parry window' : 'OFF'), 2.5);
+    G.sfx.ui();
+  }
   if (G.state === 'title') {
     if (G.pressed.enter) startPlay();
     return;
   }
   if (G.state === 'gameover' || G.state === 'ending') {
     if (G.pressed.restart) { newGame(); }
+    if (G.pressed.ngplus && G.state === 'ending') newGamePlus();
+    return;
+  }
+  if (G.state === 'cutscene') {
+    const c2 = G.cut;
+    c2.t += dt;
+    if (G.pressed.enter || G.pressed.use || G.pressed.jump || c2.t > 4) { c2.i++; c2.t = 0; G.sfx.ui(); }
+    if (c2.i >= c2.lines.length) {
+      const fn = c2.onDone;
+      G.cut = null;
+      G.state = 'play';
+      if (fn) fn();
+    } else if (c2.focusX != null) {
+      G.cam.x = lerp(G.cam.x, clamp(c2.focusX - G.W / 2, 0, WORLD_W - G.W), 0.08);
+    }
+    return;
+  }
+  if (G.state === 'blueprint') {
+    if (G.pressed.map || G.pressed.esc || G.pressed.menu) { G.state = 'play'; G.sfx.ui(); }
+    if (G.pressed.left) { G.bpSel = (G.bpSel + 8) % 9; G.sfx.ui(); }
+    if (G.pressed.right) { G.bpSel = (G.bpSel + 1) % 9; G.sfx.ui(); }
+    if (G.pressed.enter || G.pressed.use) tryFastTravel();
     return;
   }
   if (G.state === 'menu') {
@@ -65,6 +188,7 @@ function update(dt) {
 
   // ---- play ----
   if (G.pressed.menu) { G.state = 'menu'; G.sfx.ui(); return; }
+  if (G.pressed.map) { G.state = 'blueprint'; G.bpSel = 0; G.sfx.ui(); return; }
 
   // Whisper of the Oracle: time dilation after a perfect parry
   let ts = 1;
