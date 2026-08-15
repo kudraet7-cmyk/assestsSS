@@ -1,0 +1,1116 @@
+<title>Exam Insight Console</title>
+<style>
+  /* ══════════════════════════════════════════════════════════
+     Exam Insight — interactive UI demo
+     Product chrome: cyan→violet accent.
+     Chart marks: a separate validated blue ramp (see PLAN.md §8) —
+     never the accent, so data never competes with UI.
+     ══════════════════════════════════════════════════════════ */
+
+  .app {
+    color-scheme: dark;
+    --bg:        #0A0C11;
+    --bg-2:      #0E1119;
+    --panel:     #141926;
+    --panel-2:   #1A2031;
+    --line:      rgba(255,255,255,.075);
+    --line-2:    rgba(255,255,255,.14);
+    --tx:        #E8ECF5;
+    --tx-2:      #9AA4BA;
+    --tx-3:      #66708A;
+    --cyan:      #22D3EE;
+    --violet:    #8B5CF6;
+    --grad:      linear-gradient(103deg, #22D3EE 0%, #8B5CF6 100%);
+    --ok:        #0CA30C;
+    --warn:      #FAB219;
+    --crit:      #D03B3B;
+    /* validated chart ramp — blue, dark steps */
+    --s1:  #184F95;
+    --s2:  #256ABF;
+    --s3:  #3987E5;
+    --s4:  #6DA7EC;
+    --s5:  #9EC5F4;
+    --mark: #3987E5;
+    --grid: rgba(255,255,255,.07);
+  }
+  .app[data-app-theme="light"] {
+    color-scheme: light;
+    --bg:        #F2F4F8;
+    --bg-2:      #E9EDF3;
+    --panel:     #FFFFFF;
+    --panel-2:   #F5F7FA;
+    --line:      rgba(12,18,32,.10);
+    --line-2:    rgba(12,18,32,.18);
+    --tx:        #131722;
+    --tx-2:      #4E586C;
+    --tx-3:      #808A9E;
+    --cyan:      #0891B2;
+    --violet:    #6D3BE0;
+    --grad:      linear-gradient(103deg, #0891B2 0%, #6D3BE0 100%);
+    --s1:  #CDE2FB;
+    --s2:  #9EC5F4;
+    --s3:  #5598E7;
+    --s4:  #2A78D6;
+    --s5:  #184F95;
+    --mark: #2A78D6;
+    --grid: rgba(12,18,32,.08);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #0A0C11;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+                 "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+
+  .app {
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    background: var(--bg);
+    color: var(--tx);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+    position: relative;
+    overflow: hidden;
+  }
+  .app::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(760px 460px at 8% -6%,  rgba(34,211,238,.10), transparent 62%),
+      radial-gradient(720px 520px at 98% 106%, rgba(139,92,246,.11), transparent 62%),
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 44px 100%;
+    opacity: .5;
+    pointer-events: none;
+  }
+  .app[data-app-theme="light"]::before { opacity: .7; }
+
+  .shell {
+    position: relative; display: grid;
+    grid-template-columns: 218px 1fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── top bar ───────────────────────────────── */
+  .top {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 22px; height: 58px;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .glyph {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--grad);
+    display: grid; place-items: center; flex: 0 0 auto;
+    box-shadow: 0 0 18px -4px rgba(34,211,238,.55);
+  }
+  .glyph svg { display: block; }
+  .brand .nm { font-weight: 650; letter-spacing: -.01em; font-size: 15px; }
+  .brand .en {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--tx-3); margin-top: -1px;
+  }
+  .top .sess {
+    margin-left: 14px; padding-left: 16px; border-left: 1px solid var(--line);
+    font-size: 12.5px; color: var(--tx-2);
+  }
+  .top .sess b { color: var(--tx); font-weight: 550; }
+  .top .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .meter {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--tx-3);
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+  }
+  .meter .bar { width: 52px; height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+  .meter .bar i { display: block; height: 100%; width: 23%; background: var(--grad); }
+
+  .tgl {
+    display: flex; align-items: center; gap: 0;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--panel);
+  }
+  .tgl button {
+    border: 0; background: none; cursor: pointer; color: var(--tx-3);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .tgl button[aria-pressed="true"] { background: var(--panel-2); color: var(--tx); }
+
+  /* ── rail ──────────────────────────────────── */
+  .rail { border-right: 1px solid var(--line); padding: 22px 0 30px; position: relative; align-self: stretch; }
+  .rail .cap {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--tx-3); padding: 0 22px 14px;
+  }
+  .steps { position: relative; }
+  .steps::before {
+    content: ""; position: absolute; left: 37px; top: 20px; bottom: 20px;
+    width: 1px; background: var(--line);
+  }
+  .step {
+    display: flex; gap: 13px; align-items: flex-start;
+    width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
+    padding: 9px 18px 9px 22px; position: relative; color: inherit; font: inherit;
+  }
+  .step .dot {
+    width: 27px; height: 27px; border-radius: 50%; flex: 0 0 auto;
+    display: grid; place-items: center; position: relative; z-index: 1;
+    font-family: var(--mono); font-size: 11px;
+    background: var(--panel); border: 1px solid var(--line-2); color: var(--tx-3);
+    transition: .18s;
+  }
+  .step .lb { font-size: 13.5px; color: var(--tx-2); transition: .18s; padding-top: 3px; }
+  .step .lb small { display: block; font-size: 10.5px; color: var(--tx-3); font-family: var(--mono); letter-spacing: .04em; }
+  .step:hover .lb { color: var(--tx); }
+  .step.done .dot { background: var(--panel-2); color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+  .step.on .dot {
+    background: var(--grad); color: #06121A; border-color: transparent; font-weight: 700;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--cyan) 12%, transparent), 0 0 20px -4px rgba(34,211,238,.6);
+  }
+  .app[data-app-theme="light"] .step.on .dot { color: #fff; }
+  .step.on .lb { color: var(--tx); font-weight: 600; }
+  .step.on::after {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    background: var(--grad); border-radius: 0 2px 2px 0;
+  }
+
+  .railfoot { margin-top: 22px; padding: 16px 22px 0; border-top: 1px solid var(--line); }
+  .privacy {
+    font-size: 11px; color: var(--tx-3); line-height: 1.55;
+    display: flex; gap: 8px;
+  }
+  .privacy svg { flex: 0 0 auto; margin-top: 2px; }
+  .privacy b { color: var(--tx-2); font-weight: 600; }
+
+  /* ── main ──────────────────────────────────── */
+  .main { padding: 26px 30px 60px; overflow-y: auto; min-height: 0; align-self: stretch; }
+  .pane { display: none; }
+  .pane.on { display: block; animation: rise .3s cubic-bezier(.2,.7,.3,1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .pane.on { animation: none; } }
+
+  .head { display: flex; align-items: flex-end; gap: 18px; margin-bottom: 20px; }
+  .head h1 { font-size: 21px; font-weight: 650; margin: 0; letter-spacing: -.015em; }
+  .head .sub { font-size: 12.5px; color: var(--tx-2); margin-top: 3px; }
+  .head .act { margin-left: auto; display: flex; gap: 9px; }
+
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 550; cursor: pointer;
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line-2);
+    background: var(--panel); color: var(--tx); transition: .15s;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .btn:hover { border-color: var(--tx-3); }
+  .btn.pri {
+    background: var(--grad); border-color: transparent; color: #06121A; font-weight: 650;
+    box-shadow: 0 3px 18px -6px rgba(34,211,238,.7);
+  }
+  .app[data-app-theme="light"] .btn.pri { color: #fff; }
+  .btn.pri:hover { filter: brightness(1.08); }
+  .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .card > .ct {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .15em;
+    text-transform: uppercase; color: var(--tx-3); margin-bottom: 14px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .card > .ct .r { margin-left: auto; letter-spacing: .03em; text-transform: none; font-size: 10.5px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+
+  /* ── step 1 : upload ───────────────────────── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    font: inherit; font-size: 13px; cursor: pointer; background: none; border: 0;
+    color: var(--tx-3); padding: 9px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button:hover { color: var(--tx-2); }
+  .tabs button[aria-selected="true"] { color: var(--tx); border-bottom-color: var(--cyan); font-weight: 600; }
+
+  .drop {
+    border: 1.5px dashed var(--line-2); border-radius: 12px;
+    padding: 34px 24px; text-align: center; background: var(--panel-2);
+    transition: .18s;
+  }
+  .drop:hover { border-color: color-mix(in srgb, var(--cyan) 45%, transparent); background: var(--panel); }
+  .drop .ic { color: var(--cyan); margin-bottom: 10px; }
+  .drop .t { font-size: 14.5px; font-weight: 600; margin-bottom: 5px; }
+  .drop .h { font-size: 12px; color: var(--tx-3); }
+
+  .files { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .file {
+    display: flex; align-items: center; gap: 11px; padding: 10px 13px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); font-size: 12.5px;
+  }
+  .file .th {
+    width: 30px; height: 38px; border-radius: 3px; flex: 0 0 auto;
+    background: linear-gradient(170deg, var(--panel), var(--bg-2)); border: 1px solid var(--line-2);
+    display: grid; place-items: center; font-family: var(--mono); font-size: 8.5px; color: var(--tx-3);
+  }
+  .file .nm { font-weight: 550; }
+  .file .mt { font-size: 11px; color: var(--tx-3); font-family: var(--mono); }
+  .file .st { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+  .file .st.done { color: var(--ok); }
+  .file .st.run  { color: var(--cyan); }
+
+  .prog { height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; width: 74px; }
+  .prog i { display: block; height: 100%; background: var(--grad); }
+
+  .ta {
+    width: 100%; min-height: 190px; resize: vertical;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--tx); padding: 14px 15px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+  }
+  .ta:focus { outline: none; border-color: color-mix(in srgb, var(--cyan) 55%, transparent); }
+
+  /* ── tables ────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 0 -20px -18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--tx-3); text-align: left; font-weight: 600;
+    padding: 0 14px 9px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--tx-2); }
+  tbody tr:hover td { background: var(--panel-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.n { font-family: var(--mono); color: var(--tx); font-variant-numeric: tabular-nums; }
+  td.q { color: var(--tx); }
+  .flag td { background: color-mix(in srgb, var(--warn) 7%, transparent); }
+  .flag:hover td { background: color-mix(in srgb, var(--warn) 11%, transparent); }
+
+  .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 5px;
+    background: var(--panel-2); border: 1px solid var(--line-2); color: var(--tx-2); white-space: nowrap;
+  }
+  .tag.ed { border-style: dashed; cursor: pointer; }
+  .tag.ed:hover { border-color: var(--cyan); color: var(--tx); }
+  .conf { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; }
+  .conf .b { width: 34px; height: 3px; background: var(--line-2); border-radius: 2px; overflow: hidden; }
+  .conf .b i { display: block; height: 100%; background: var(--ok); }
+  .conf.low .b i { background: var(--warn); }
+  .conf.low { color: var(--warn); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line-2); background: var(--panel-2); color: var(--tx-2);
+    white-space: nowrap;
+  }
+  .pill.g { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  .pill.w { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .pill.c { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
+
+  /* ── stat tiles ────────────────────────────── */
+  .kpis { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 14px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--tx-3); }
+  .kpi .v { font-size: 25px; font-weight: 650; letter-spacing: -.02em; margin-top: 7px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .kpi .v small { font-size: 12px; color: var(--tx-3); font-weight: 400; }
+  .kpi .d { font-size: 11px; color: var(--tx-3); margin-top: 5px; }
+
+  /* ── charts ────────────────────────────────── */
+  .chart text { font-family: var(--mono); font-size: 9.5px; fill: var(--tx-3); }
+  .chart .lbl { font-family: inherit; font-size: 11.5px; fill: var(--tx-2); }
+  .chart .val { font-family: var(--mono); font-size: 10px; fill: var(--tx-2); }
+  .chart .bar { fill: var(--mark); }
+  .chart .bar:hover { fill: var(--s4); }
+  .chart .trk { fill: var(--line); }
+  .chart .thr { stroke: var(--crit); stroke-width: 1; stroke-dasharray: 3 3; opacity: .8; }
+  .chart .thrl { fill: var(--crit); font-size: 9px; }
+  .cell { stroke: var(--panel); stroke-width: 2; }
+  .cell:hover { stroke: var(--tx); stroke-width: 1.5; }
+
+  .legend { display: flex; align-items: center; gap: 14px; font-size: 11px; color: var(--tx-3); margin-top: 12px; flex-wrap: wrap; }
+  .legend .sw { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .ch { width: 11px; height: 11px; border-radius: 3px; }
+  .ramp { display: flex; gap: 2px; }
+  .ramp span { width: 17px; height: 9px; border-radius: 2px; }
+
+  .tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .12s;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+    padding: 8px 11px; font-size: 12px; color: var(--tx); z-index: 60;
+    box-shadow: 0 10px 30px -8px rgba(0,0,0,.6); max-width: 240px;
+  }
+  .tip b { display: block; margin-bottom: 3px; font-size: 12.5px; }
+  .tip .m { color: var(--tx-3); font-family: var(--mono); font-size: 11px; }
+
+  /* ── insight ───────────────────────────────── */
+  .insight { border-left: 2px solid transparent; border-image: var(--grad) 1; padding-left: 16px; }
+  .insight h4 { margin: 0 0 7px; font-size: 13.5px; font-weight: 650; }
+  .insight p { margin: 0 0 9px; font-size: 12.5px; color: var(--tx-2); line-height: 1.65; }
+  .insight p:last-child { margin-bottom: 0; }
+  .insight b { color: var(--tx); }
+
+  /* ── step 5 : export ───────────────────────── */
+  .docs { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; }
+  .doc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 17px 19px; display: flex; flex-direction: column; gap: 9px; transition: .16s;
+  }
+  .doc:hover { border-color: var(--line-2); transform: translateY(-1px); }
+  .doc .top2 { display: flex; align-items: flex-start; gap: 11px; }
+  .doc .ic {
+    width: 34px; height: 34px; border-radius: 9px; flex: 0 0 auto; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--cyan) 13%, transparent); color: var(--cyan);
+  }
+  .doc.v .ic { background: color-mix(in srgb, var(--violet) 15%, transparent); color: var(--violet); }
+  .doc h3 { margin: 0; font-size: 14.5px; font-weight: 620; }
+  .doc .meta { font-family: var(--mono); font-size: 10.5px; color: var(--tx-3); margin-top: 2px; letter-spacing: .03em; }
+  .doc p { margin: 0; font-size: 12.5px; color: var(--tx-2); line-height: 1.6; }
+  .doc .row { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+
+  .roster { max-height: 316px; overflow-y: auto; margin: 0 -20px -18px; }
+  .msg {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+    padding: 13px 15px; font-size: 12.5px; line-height: 1.75; color: var(--tx-2); white-space: pre-wrap;
+    max-height: 232px; overflow-y: auto;
+  }
+
+  .note {
+    font-size: 11.5px; color: var(--tx-3); margin-top: 12px; line-height: 1.6;
+    display: flex; gap: 8px;
+  }
+  .note svg { flex: 0 0 auto; margin-top: 2px; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { display: none; }
+    .kpis { grid-template-columns: repeat(2,1fr); }
+    .grid2, .grid3, .docs { grid-template-columns: 1fr; }
+    .main { max-height: none; }
+  }
+</style>
+
+<div class="app" id="app">
+<div class="shell">
+
+  <!-- ═════ top bar ═════ -->
+  <div class="top">
+    <div class="brand">
+      <span class="glyph">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <path d="M2 12.5 L5.6 7 L8.6 9.6 L14 2.6" stroke="#06121A" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="5.6" cy="7" r="1.5" fill="#06121A"/>
+        </svg>
+      </span>
+      <span>
+        <div class="nm">试卷分析助手</div>
+        <div class="en">Exam Insight</div>
+      </span>
+    </div>
+    <div class="sess">2026 暑 预初卓越英语 · <b>六年级上 Starter &amp; U1 阶段测试</b> · 22 份卷面</div>
+    <div class="right">
+      <div class="meter" title="本次会话的 API 用量">
+        <span>用量</span><span class="bar"><i></i></span><span>¥0.38</span>
+      </div>
+      <div class="tgl" role="group" aria-label="主题">
+        <button id="tDark"  aria-pressed="true">Dark</button>
+        <button id="tLight" aria-pressed="false">Light</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════ rail ═════ -->
+  <nav class="rail" aria-label="流程">
+    <div class="cap">流程 / workflow</div>
+    <div class="steps" id="steps">
+      <button class="step done" data-s="0"><span class="dot">1</span><span class="lb">上传试卷<small>Upload</small></span></button>
+      <button class="step done" data-s="1"><span class="dot">2</span><span class="lb">核对题目<small>Review</small></span></button>
+      <button class="step done" data-s="2"><span class="dot">3</span><span class="lb">录入错题<small>Scores</small></span></button>
+      <button class="step on"   data-s="3"><span class="dot">4</span><span class="lb">班级分析<small>Analyze</small></span></button>
+      <button class="step"      data-s="4"><span class="dot">5</span><span class="lb">导出文档<small>Export</small></span></button>
+    </div>
+    <div class="railfoot">
+      <div class="privacy">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 1.5 L13.5 4 V8 C13.5 11.2 11 13.7 8 14.5 C5 13.7 2.5 11.2 2.5 8 V4 Z"
+                stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        </svg>
+        <span><b>学生姓名不出本机。</b>发送给模型的只有匿名错题模式，姓名在本地写回文档。</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═════ main ═════ -->
+  <main class="main">
+
+    <!-- ───────── 1 · UPLOAD ───────── -->
+    <section class="pane" data-p="0">
+      <div class="head">
+        <div>
+          <h1>上传试卷</h1>
+          <div class="sub">拍照、PDF、粘贴文本或手动录入 —— 四条路径最后都汇入同一张核对表</div>
+        </div>
+        <div class="act"><button class="btn pri">开始解析 →</button></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="tabs" role="tablist">
+            <button role="tab" aria-selected="true">拍照 / PDF</button>
+            <button role="tab" aria-selected="false">粘贴文本</button>
+            <button role="tab" aria-selected="false">手动录入</button>
+          </div>
+          <div class="drop">
+            <div class="ic">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3.5 15v3.5a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V15"
+                      stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="t">把试卷拖到这里</div>
+            <div class="h">支持 JPG / PNG / PDF · 可多页 · 手机直接拍也行</div>
+          </div>
+          <div class="files">
+            <div class="file">
+              <span class="th">P1</span>
+              <span><span class="nm">试卷_第1页.jpg</span><br><span class="mt">2.4 MB · 已识别 34 题</span></span>
+              <span class="st done">✓ 完成</span>
+            </div>
+            <div class="file">
+              <span class="th">P2</span>
+              <span><span class="nm">试卷_第2页.jpg</span><br><span class="mt">2.1 MB · 已识别 36 题</span></span>
+              <span class="st done">✓ 完成</span>
+            </div>
+            <div class="file">
+              <span class="th">KEY</span>
+              <span><span class="nm">参考答案.pdf</span><br><span class="mt">180 KB · 正在比对</span></span>
+              <span class="st run"><span class="prog"><i style="width:64%"></i></span>64%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="ct">试卷信息 <span class="r">自动识别，可改</span></div>
+            <table>
+              <tbody>
+                <tr><td style="width:82px">学科</td><td class="q">英语</td></tr>
+                <tr><td>年级</td><td class="q">六年级上（预初）</td></tr>
+                <tr><td>题量</td><td class="q">70 题 · 客观 61 / 主观 9</td></tr>
+                <tr><td>总分</td><td class="q">100 分</td></tr>
+                <tr><td>答案</td><td class="q"><span class="pill g">✓ 随卷提供</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="ct">如果试卷没带答案</div>
+            <p style="margin:0;font-size:12.5px;color:var(--tx-2);line-height:1.65">
+              模型会先拟出答案并标记为 <span class="pill w">待核对</span>。
+              在你逐题确认之前，<b style="color:var(--tx)">答案解析 PDF 不允许导出</b> —— 一份错的答案发给
+              40 个家庭，是这个产品最坏的失败方式，所以这里是硬性拦截，不是提示条。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── 2 · REVIEW ───────── -->
+    <section class="pane" data-p="1">
+      <div class="head">
+        <div>
+          <h1>核对题目</h1>
+          <div class="sub">70 题已识别 · <span style="color:var(--warn)">3 题置信度偏低，已标黄</span> —— 只需看这 3 行，不必逐题检查</div>
+        </div>
+        <div class="act">
+          <button class="btn">全部展开</button>
+          <button class="btn pri">确认无误 →</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ct">题目与知识点 <span class="r">知识点由模型提议，点击标签可改</span></div>
+        <div class="tw">
+          <table>
+            <thead><tr>
+              <th style="width:52px">题号</th><th>题干</th><th style="width:64px">类型</th>
+              <th style="width:78px">正确答案</th><th style="width:210px">知识点</th><th style="width:104px">置信度</th>
+            </tr></thead>
+            <tbody id="qrows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>知识点体系按学科保存，下次同科目考试直接复用 —— 到第三份卷子，你基本只是在确认，不是在录入。</span>
+      </div>
+    </section>
+
+    <!-- ───────── 3 · SCORES ───────── -->
+    <section class="pane" data-p="2">
+      <div class="head">
+        <div>
+          <h1>录入错题</h1>
+          <div class="sub">一行一个学生。分隔符随便用 —— 中英文冒号、逗号、顿号、空格都认</div>
+        </div>
+        <div class="act">
+          <button class="btn">导入 Excel</button>
+          <button class="btn pri">开始分析 →</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="ct">粘贴名单 <span class="r">可选：在题号后加上他选的选项</span></div>
+          <textarea class="ta" spellcheck="false" aria-label="名单">陈嘉禾: 30B,44,55,64
+李思远: 3,15,30B,44,62C,64,69
+浦绎心: 30B,62C
+张一鸣 7 9 21 30 33 44 55 62 64
+王梓涵：4、11、23、30、38、44、49、62、64、66、69、70
+刘可欣: 3-5,12,30,44,50,62,64,69
+孙悦: 30,44,50,55,62,64,69,71</textarea>
+          <div class="note" style="margin-top:11px">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span><b style="color:var(--tx-2)">30B</b> 表示第 30 题他选了 B。多敲一个字母，报告就能写「你选的 to 为什么错」，而不只是「正确答案是 with」。完全可选。<b style="color:var(--tx-2)">3-5</b> 自动展开为 3、4、5；<b style="color:var(--tx-2)">无</b> / <b style="color:var(--tx-2)">满分</b> 记为零错题。</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ct">实时校验 <span class="r" id="svCount"></span></div>
+          <div class="tw" style="margin-bottom:0">
+            <table>
+              <thead><tr><th>学生</th><th style="width:60px">客观错题</th><th style="width:64px">主观失分</th><th style="width:148px">校验</th></tr></thead>
+              <tbody id="srows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── 4 · ANALYZE ───────── -->
+    <section class="pane on" data-p="3">
+      <div class="head">
+        <div>
+          <h1>班级分析</h1>
+          <div class="sub" id="anSub"></div>
+        </div>
+        <div class="act">
+          <button class="btn">查看数据表</button>
+          <button class="btn pri">生成文档 →</button>
+        </div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="ct">错误率最高的 12 题 <span class="r">红线 = 半数以上学生做错</span></div>
+          <div id="cQ"></div>
+        </div>
+        <div class="card">
+          <div class="ct">各知识点错误率 <span class="r">按题数归一，非原始错题数</span></div>
+          <div id="cC"></div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:14px">
+          <div class="card">
+            <div class="ct">错题数分布</div>
+            <div id="cD"></div>
+          </div>
+          <div class="card">
+            <div class="ct">教学建议 <span class="r">依据上方计算结果</span></div>
+            <div class="insight" id="insight"></div>
+          </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="ct">学生 × 知识点 热力图 <span class="r">按学生总分排序 · 悬停查看明细</span></div>
+        <div id="cH"></div>
+        <div class="legend">
+          <span>单元格 = 该学生在该知识点上的错误率</span>
+          <span class="sw"><span class="ch" style="background:var(--panel-2);border:1px solid var(--line-2)"></span>全对</span>
+          <span class="ramp" id="rampSw"></span>
+          <span style="font-family:var(--mono);font-size:10.5px">低 → 高</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── 5 · EXPORT ───────── -->
+    <section class="pane" data-p="4">
+      <div class="head">
+        <div>
+          <h1>导出文档</h1>
+          <div class="sub">四类文档已就绪 · 共 47 个文件</div>
+        </div>
+        <div class="act">
+          <button class="btn">预览全部</button>
+          <button class="btn pri">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0 3-3M8 10 5 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 11v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            打包下载 .zip
+          </button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="docs" style="grid-template-columns:1fr;gap:14px">
+          <div class="doc">
+            <div class="top2">
+              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10h-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+              <div>
+                <h3>个人诊断报告</h3>
+                <div class="meta">PDF × 22 · 每份 2 页</div>
+              </div>
+            </div>
+            <p>第 1 页诊断，第 2 页是可撕下的练习卷。含错因分析、干扰项讲解与三级梯度练习。</p>
+            <div class="row"><button class="btn">预览</button><button class="btn">下载全部</button></div>
+          </div>
+          <div class="doc">
+            <div class="top2">
+              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 13.5h12M4 13V8m3.5 5V4m3.5 9V6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+              <div>
+                <h3>班级分析报告</h3>
+                <div class="meta">PDF × 1 · 4 页</div>
+              </div>
+            </div>
+            <p>错误率分布、知识点归一化对比、学生 × 知识点热力图、分数直方图与教学重点。</p>
+            <div class="row"><button class="btn">预览</button><button class="btn">下载</button></div>
+          </div>
+          <div class="doc v">
+            <div class="top2">
+              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 4.5h12v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 5 8 9l5.5-4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+              <div>
+                <h3>家长沟通话术</h3>
+                <div class="meta">TXT × 22 · 微信可直接粘贴</div>
+              </div>
+            </div>
+            <p>150–250 字，无术语。语气可调（温和 / 中性 / 直接），可加署名。</p>
+            <div class="row"><button class="btn">预览</button><button class="btn">下载全部</button></div>
+          </div>
+          <div class="doc v">
+            <div class="top2">
+              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h10v11H3z" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 6.5l1.5 1.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+              <div>
+                <h3>答案解析</h3>
+                <div class="meta">PDF × 1 · 含班级错误率</div>
+              </div>
+            </div>
+            <p>逐题答案、讲解、知识点标签，每题旁标注本班错误率 —— 批改参考与讲评稿同一份。</p>
+            <div class="row"><button class="btn">预览</button><button class="btn">下载</button></div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="ct">学生名单 <span class="r">22 人 · 全部就绪</span></div>
+            <div class="roster tw">
+              <table>
+                <thead><tr><th>学生</th><th style="width:52px">得分</th><th style="width:66px">全卷错题</th><th style="width:96px">文档</th></tr></thead>
+                <tbody id="rrows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">家长话术预览 <span class="r">浦绎心</span></div>
+            <div class="msg" id="msgBox"></div>
+            <div class="row" style="display:flex;gap:8px;margin-top:12px">
+              <button class="btn" id="copyBtn">复制</button>
+              <button class="btn">下一位 →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</div>
+<div class="tip" id="tip" role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ═══ data ═══════════════════════════════════════════════ */
+
+  /* The seven categories tile the whole paper: 61 objective + 9 subjective = 70.
+     Rates are set so the realised class mean lands near a 74.8 / 100 average. */
+  const CATS = [
+    { id:"c1", zh:"固定搭配与连词", n:6,  rate:.41 },
+    { id:"c2", zh:"短语辨析",       n:4,  rate:.36 },
+    { id:"c3", zh:"时态与语态",     n:13, rate:.22 },
+    { id:"c4", zh:"阅读·细节定位",  n:20, rate:.14 },
+    { id:"c5", zh:"阅读·主旨大意",  n:6,  rate:.41 },
+    { id:"c6", zh:"词汇与语法综合", n:12, rate:.18 },
+    { id:"c7", zh:"书面表达",       n:9,  rate:.52 }
+  ];
+  const TOTAL_Q = CATS.reduce((s, c) => s + c.n, 0);   // 70
+
+  const NAMES = ["陈嘉禾","李思远","浦绎心","张一鸣","王梓涵","刘可欣","孙悦","周子谦",
+                 "吴雨桐","郑亦然","何晨曦","徐乐言","马知微","高niv","林书白","黄允","朱ее",
+                 "唐清和","冯望舒","蒋南初","韩星野","沈попе"];
+  // keep the roster clean and plausible
+  NAMES[13] = "高逸尘"; NAMES[16] = "朱明轩"; NAMES[21] = "沈知许";
+
+  const SCORES = [92,88,84.5,83,81,80,79,78,77,76,76,75,74,73,71,70,68,66,63,59,56,52];
+
+  // deterministic PRNG so the demo is stable across reloads
+  let seed = 20260815;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+
+  /* Per student, per category: p = class rate × that student's difficulty multiplier.
+     The multipliers are normalised to mean 1, so realised class rates track the
+     authored ones — and strong students get genuine zeros instead of a floor of 1. */
+  const rawM = SCORES.map(sc => 2.2 - 2.0 * ((sc - 52) / 40));
+  const mAvg = rawM.reduce((a, b) => a + b, 0) / rawM.length;
+  const MULT = rawM.map(m => m / mAvg);
+
+  const STUDENTS = NAMES.map((name, i) => {
+    const cells = CATS.map(c => {
+      const p = Math.min(1, c.rate * MULT[i]);
+      const exact = p * c.n;
+      const wrong = Math.min(c.n, Math.floor(exact) + (rnd() < exact % 1 ? 1 : 0));
+      return { cat: c.id, wrong, total: c.n, rate: wrong / c.n };
+    });
+    return { name, score: SCORES[i], wrong: cells.reduce((s, c) => s + c.wrong, 0), cells };
+  });
+
+  // pin 浦绎心: 2 objective misses (Q30, Q62) plus her subjective losses
+  STUDENTS[2].cells = CATS.map(c => ({
+    cat: c.id, total: c.n,
+    wrong: (c.id === "c1" || c.id === "c2") ? 1 : c.id === "c7" ? 4 : 0,
+    rate:  (c.id === "c1" || c.id === "c2") ? 1 / c.n : c.id === "c7" ? 4 / c.n : 0
+  }));
+  STUDENTS[2].wrong = STUDENTS[2].cells.reduce((a, c) => a + c.wrong, 0);
+
+  // realised class rates — the category chart must agree with the heatmap
+  CATS.forEach(c => {
+    const w = STUDENTS.reduce((s, st) => s + st.cells.find(x => x.cat === c.id).wrong, 0);
+    c.rate = w / (STUDENTS.length * c.n);
+  });
+
+  const STATS = (() => {
+    const w = STUDENTS.map(s => s.wrong), sc = STUDENTS.map(s => s.score);
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const mw = mean(w), msc = mean(sc);
+    const sd = Math.sqrt(mean(sc.map(v => (v - msc) ** 2)));
+    const sorted = sc.slice().sort((a, b) => a - b);
+    return {
+      mean: msc, median: sorted[Math.floor(sorted.length / 2)], sd,
+      max: Math.max(...sc), min: Math.min(...sc),
+      pass: sc.filter(v => v >= 60).length,
+      meanWrong: mw,
+      atRisk: w.filter(v => v > mw + Math.sqrt(mean(w.map(x => (x - mw) ** 2)))).length
+    };
+  })();
+
+  const HARD = [
+    { q:70, rate:.68, cat:"书面表达"      }, { q:46, rate:.59, cat:"书面表达"      },
+    { q:64, rate:.55, cat:"阅读·主旨大意" }, { q:30, rate:.41, cat:"固定搭配与连词" },
+    { q:50, rate:.41, cat:"时态与语态"    }, { q:69, rate:.41, cat:"书面表达"      },
+    { q:62, rate:.36, cat:"短语辨析"      }, { q:15, rate:.36, cat:"固定搭配与连词" },
+    { q:44, rate:.32, cat:"时态与语态"    }, { q:23, rate:.32, cat:"阅读·细节定位" },
+    { q:7,  rate:.27, cat:"短语辨析"      }, { q:55, rate:.27, cat:"阅读·细节定位" }
+  ];
+
+  const QROWS = [
+    [28,"He has lived here ____ 2019.","单选","B. since","时态与语态 · 介词",.97],
+    [29,"They ____ football when it began to rain.","单选","C. were playing","时态与语态",.96],
+    [30,"It helped us connect ____ each other.","单选","A. with","固定搭配与连词",.98],
+    [31,"____ is your new English teacher like?","单选","D. What","疑问句式",.71],
+    [32,"She is good at ____ (draw) pictures.","填空","drawing","动词形式",.94],
+    [33,"The book on the desk ____ mine.","单选","A. is","主谓一致",.95],
+    [34,"手写体 — 请确认题干是否为 “Neither of them ____ been there.”","单选","has","主谓一致",.58],
+    [35,"Kicking jianzi is the same ____ some common sports.","单选","B. as","固定搭配与连词",.93]
+  ];
+
+  const rosterMsg = () => `王女士您好，我是浦绎心的英语老师。
+
+这次预初阶段测试，绎心考了 ${STUDENTS[2].score} 分，班级平均 ${STATS.mean.toFixed(1)} 分，排在班级第 3 名，整体是很不错的。语法主干掌握得扎实，客观题只错了 2 题。
+
+有两个地方这段时间可以多留意一下：一是介词和动词短语的细微区别，比如"和人交往"用 connect with、"接设备"用 connect to，他知道意思但选的时候容易混；二是简答题答句写得不够完整，容易漏主语或者时态前后不一致，这部分丢的分其实比选择题多。
+
+我已经把针对这两点的练习附在报告第 2 页，大概 25 分钟能做完，麻烦您提醒他这周做一下，做完对照答案就行。下阶段我们的目标是 88 分。
+
+有任何问题欢迎随时找我。
+
+—— 李老师`;
+  const ROSTER_MSG = rosterMsg();
+
+  /* ═══ helpers ════════════════════════════════════════════ */
+
+  const $  = s => document.querySelector(s);
+  const el = (t, a) => { const n = document.createElementNS("http://www.w3.org/2000/svg", t);
+                         for (const k in a) n.setAttribute(k, a[k]); return n; };
+  const svg = (w, h) => { const s = el("svg", { viewBox:`0 0 ${w} ${h}`, width:"100%",
+                          height:h, class:"chart", role:"img" });
+                          s.style.overflow = "visible"; return s; };
+  const pc = v => Math.round(v * 100) + "%";
+
+  const tip = $("#tip");
+  function bindTip(node, html) {
+    node.addEventListener("mouseenter", e => { tip.innerHTML = html; tip.style.opacity = 1; move(e); });
+    node.addEventListener("mousemove", move);
+    node.addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+    function move(e) {
+      const r = tip.getBoundingClientRect();
+      let x = e.clientX + 14, y = e.clientY - r.height - 10;
+      if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+      if (y < 8) y = e.clientY + 16;
+      tip.style.left = x + "px"; tip.style.top = y + "px";
+    }
+  }
+
+  /* ═══ charts ═════════════════════════════════════════════ */
+
+  // 1 — error rate by question (single series, threshold line)
+  function chartQ() {
+    const W = 420, rowH = 22, padL = 42, padR = 40, top = 6;
+    const H = top + HARD.length * rowH + 16;
+    const s = svg(W, H); s.setAttribute("aria-label", "错误率最高的 12 题");
+    const w = W - padL - padR;
+
+    HARD.forEach((d, i) => {
+      const y = top + i * rowH;
+      s.appendChild(el("text", { x: padL - 8, y: y + 12, "text-anchor":"end", class:"lbl" })).textContent = "Q" + d.q;
+      s.appendChild(el("rect", { x: padL, y: y + 4, width: w, height: 10, rx: 4, class:"trk" }));
+      const bar = el("rect", { x: padL, y: y + 4, width: Math.max(4, w * d.rate), height: 10, rx: 4, class:"bar" });
+      s.appendChild(bar);
+      s.appendChild(el("text", { x: padL + w + 7, y: y + 12, class:"val" })).textContent = pc(d.rate);
+      bindTip(bar, `<b>第 ${d.q} 题</b><span class="m">${d.cat}</span>
+                    <span class="m">${Math.round(d.rate*22)} / 22 人做错 · ${pc(d.rate)}</span>`);
+    });
+
+    const tx = padL + w * .5;
+    s.appendChild(el("line", { x1: tx, y1: top - 2, x2: tx, y2: top + HARD.length * rowH, class:"thr" }));
+    s.appendChild(el("text", { x: tx, y: H - 4, "text-anchor":"middle", class:"thrl" })).textContent = "50% 半数以上";
+    $("#cQ").appendChild(s);
+  }
+
+  // 2 — error rate by category (normalised by question count)
+  function chartC() {
+    const W = 420, rowH = 30, padL = 108, padR = 42, top = 4;
+    const H = top + CATS.length * rowH;
+    const s = svg(W, H); s.setAttribute("aria-label", "各知识点错误率");
+    const w = W - padL - padR;
+    const sorted = CATS.slice().sort((a, b) => b.rate - a.rate);
+
+    sorted.forEach((c, i) => {
+      const y = top + i * rowH;
+      s.appendChild(el("text", { x: padL - 10, y: y + 12, "text-anchor":"end", class:"lbl" })).textContent = c.zh;
+      s.appendChild(el("text", { x: padL - 10, y: y + 23, "text-anchor":"end", class:"val" })).textContent = c.n + " 题";
+      s.appendChild(el("rect", { x: padL, y: y + 4, width: w, height: 11, rx: 4, class:"trk" }));
+      const bar = el("rect", { x: padL, y: y + 4, width: Math.max(4, w * c.rate), height: 11, rx: 4, class:"bar" });
+      s.appendChild(bar);
+      s.appendChild(el("text", { x: padL + w + 7, y: y + 13, class:"val" })).textContent = pc(c.rate);
+      const people = STUDENTS.filter(st => st.cells.find(x => x.cat === c.id).wrong > 0).length;
+      bindTip(bar, `<b>${c.zh}</b><span class="m">本卷 ${c.n} 题 · 错误率 ${pc(c.rate)}</span>
+                    <span class="m">${people} / 22 人在此知识点上有失分</span>`);
+    });
+    $("#cC").appendChild(s);
+  }
+
+  // 3 — student × category heatmap (sequential, one hue)
+  function chartH() {
+    const RAMP = ["--s1","--s2","--s3","--s4","--s5"];
+    const step = r => r <= .001 ? "var(--panel-2)"
+                    : `var(${RAMP[Math.min(4, Math.floor(r * 4.999))]})`;
+
+    const W = 900, padL = 96, padR = 46, padT = 52, ch = 15, gap = 3;
+    const cw = (W - padL - padR) / CATS.length;
+    const H = padT + STUDENTS.length * (ch + gap);
+    const s = svg(W, H); s.setAttribute("aria-label", "学生与知识点错误率热力图");
+
+    CATS.forEach((c, j) => {
+      const x = padL + j * cw + cw / 2;
+      const t = el("text", { x, y: padT - 12, "text-anchor":"middle", class:"lbl" });
+      t.textContent = c.zh; s.appendChild(t);
+      s.appendChild(el("text", { x, y: padT - 1, "text-anchor":"middle" })).textContent = c.n + " 题";
+    });
+
+    STUDENTS.forEach((st, i) => {
+      const y = padT + i * (ch + gap);
+      s.appendChild(el("text", { x: padL - 12, y: y + 11, "text-anchor":"end", class:"lbl" })).textContent = st.name;
+      st.cells.forEach((cell, j) => {
+        const r = el("rect", { x: padL + j * cw + 1, y, width: cw - gap, height: ch, rx: 3,
+                               class:"cell", fill: step(cell.rate) });
+        s.appendChild(r);
+        bindTip(r, `<b>${st.name} · ${CATS[j].zh}</b>
+                    <span class="m">错 ${cell.wrong} / ${cell.total} 题 · ${pc(cell.rate)}</span>`);
+      });
+      s.appendChild(el("text", { x: W - padR + 10, y: y + 11, class:"val" }))
+       .textContent = st.score + " 分";
+    });
+    $("#cH").appendChild(s);
+
+    RAMP.forEach(v => { const b = document.createElement("span");
+                        b.style.background = `var(${v})`; $("#rampSw").appendChild(b); });
+  }
+
+  // 4 — distribution of wrong-answer counts
+  function chartD() {
+    const vals = STUDENTS.map(s => s.wrong);
+    const lo = Math.floor(Math.min(...vals) / 4) * 4, hi = Math.max(...vals);
+    const step = Math.max(2, Math.ceil((hi - lo + 1) / 6));
+    const bins = Array.from({ length: 6 }, (_, i) => [lo + i * step, lo + (i + 1) * step - 1]);
+    bins[5][1] = 999;
+    const counts = bins.map(([a, b]) => vals.filter(v => v >= a && v <= b).length);
+    const max = Math.max(...counts);
+
+    const W = 420, H = 132, padL = 26, padB = 30, bw = (W - padL - 10) / bins.length;
+    const s = svg(W, H); s.setAttribute("aria-label", "错题数分布");
+    const h = H - padB - 10;
+
+    [0, .5, 1].forEach(f => {
+      const y = 10 + h * (1 - f);
+      s.appendChild(el("line", { x1: padL, y1: y, x2: W - 10, y2: y,
+                                 stroke:"var(--line)", "stroke-width":1 }));
+      s.appendChild(el("text", { x: padL - 7, y: y + 3, "text-anchor":"end" }))
+       .textContent = Math.round(max * f);
+    });
+
+    counts.forEach((c, i) => {
+      const bh = Math.max(2, h * (c / max));
+      const x = padL + i * bw;
+      const bar = el("rect", { x: x + 4, y: 10 + h - bh, width: bw - 10, height: bh, rx: 4, class:"bar" });
+      s.appendChild(bar);
+      const lab = bins[i][1] === 999 ? bins[i][0] + "+" : bins[i][0] + "–" + bins[i][1];
+      s.appendChild(el("text", { x: x + bw/2, y: H - 14, "text-anchor":"middle" })).textContent = lab;
+      bindTip(bar, `<b>错 ${lab} 题</b><span class="m">${c} 人</span>`);
+    });
+    s.appendChild(el("text", { x: W/2, y: H - 1, "text-anchor":"middle" })).textContent = "错题数区间（人数）";
+    $("#cD").appendChild(s);
+  }
+
+  /* ═══ tables ═════════════════════════════════════════════ */
+
+  function fillReview() {
+    $("#qrows").innerHTML = QROWS.map(([n, q, t, a, c, cf]) => `
+      <tr class="${cf < .8 ? "flag" : ""}">
+        <td class="n">${n}</td>
+        <td class="q">${q}</td>
+        <td>${t}</td>
+        <td class="n">${a}</td>
+        <td><span class="tag ed">${c}</span></td>
+        <td><span class="conf ${cf < .8 ? "low" : ""}">
+              <span class="b"><i style="width:${Math.round(cf*100)}%"></i></span>${Math.round(cf*100)}%
+            </span></td>
+      </tr>`).join("");
+  }
+
+  function fillScores() {
+    const SUBJ_PTS = 1.5;   // marks per subjective question on this paper
+    const notes = { 5: ["3-5 已展开", "w"], 6: ["Q71 超出题号范围", "c"] };
+    const rows = STUDENTS.slice(0, 7).map((st, i) => {
+      const subj = st.cells.find(c => c.cat === "c7").wrong;
+      const obj  = st.wrong - subj;
+      const [txt, kind] = notes[i] || ["已校验", ""];
+      return `<tr${kind === "c" ? ' class="flag"' : ""}>
+        <td class="q">${st.name}</td>
+        <td class="n">${obj}</td>
+        <td class="n">${subj ? (subj * SUBJ_PTS).toFixed(1) : "—"}</td>
+        <td><span class="pill ${kind}">${txt}</span></td>
+      </tr>`;
+    });
+    $("#srows").innerHTML = rows.join("");
+    $("#svCount").textContent = `7 名已录入 / 共 ${STUDENTS.length} 名 · 1 处待修正`;
+  }
+
+  function fillRoster() {
+    $("#rrows").innerHTML = STUDENTS.map(s => `
+      <tr>
+        <td class="q">${s.name}</td>
+        <td class="n">${s.score}</td>
+        <td class="n">${s.wrong}</td>
+        <td><span class="pill g">✓ 4 份</span></td>
+      </tr>`).join("");
+    $("#msgBox").textContent = ROSTER_MSG;
+  }
+
+  /* ═══ interaction ════════════════════════════════════════ */
+
+  $("#steps").addEventListener("click", e => {
+    const b = e.target.closest(".step"); if (!b) return;
+    const i = +b.dataset.s;
+    document.querySelectorAll(".step").forEach((s, k) => {
+      s.classList.toggle("on", k === i);
+      s.classList.toggle("done", k < i);
+    });
+    document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", +p.dataset.p === i));
+    $(".main").scrollTop = 0;
+  });
+
+  document.querySelectorAll(".tabs").forEach(g =>
+    g.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      g.querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
+    }));
+
+  const app = $("#app");
+  $("#tDark").addEventListener("click", () => setTheme("dark"));
+  $("#tLight").addEventListener("click", () => setTheme("light"));
+  function setTheme(t) {
+    app.dataset.appTheme = t;
+    $("#tDark").setAttribute("aria-pressed", t === "dark");
+    $("#tLight").setAttribute("aria-pressed", t === "light");
+    document.body.style.background = getComputedStyle(app).getPropertyValue("--bg").trim();
+  }
+
+  $("#copyBtn").addEventListener("click", function () {
+    const b = this;
+    if (navigator.clipboard) navigator.clipboard.writeText(ROSTER_MSG).catch(() => {});
+    b.textContent = "已复制";
+    setTimeout(() => { b.textContent = "复制"; }, 1600);
+  });
+
+  const ADVICE = {
+    c7: "全班最弱，且失分集中在答句结构而非词汇。建议用一节课专讲「主语＋谓语＋数据」的完整答句模板。",
+    c1: "第 30 题一题就拉走了 9 人。connect with / connect to 属同一类混淆，成组对比讲效率最高。",
+    c5: "只有 6 道题却错了近一半，说明是方法问题不是熟练度问题。首尾句定位法值得单独讲。",
+    c2: "put up / put on / put off 是成组考点，拆开背记不住，要放在一张对照表里讲。",
+    c3: "时态错误多出现在含时间状语的长句，建议先练「找时间标志词」。",
+    c4: "细节题整体稳定，可作为提分的保底项，不必占用课堂时间。",
+    c6: "综合题错误分散，无明显集中考点，暂不单独安排。"
+  };
+
+  function fillInsight() {
+    const top = CATS.slice().sort((a, b) => b.rate - a.rate).slice(0, 3);
+    $("#insight").innerHTML =
+      "<h4>下周优先重教这三项</h4>" +
+      top.map((c, i) =>
+        `<p><b>${i + 1} · ${c.zh}（错误率 ${pc(c.rate)}）</b> —— ${ADVICE[c.id]}</p>`).join("");
+  }
+
+  function fillKpis() {
+    const k = [
+      ["班级平均", STATS.mean.toFixed(1), " /100", `中位数 ${STATS.median} · σ ${STATS.sd.toFixed(1)}`, ""],
+      ["最高 / 最低", STATS.max, " / " + STATS.min, `极差 ${(STATS.max - STATS.min).toFixed(0)} 分`, ""],
+      ["及格率", Math.round(STATS.pass / STUDENTS.length * 100), "%", `${STATS.pass} / ${STUDENTS.length} 人 ≥ 60`, ""],
+      ["人均错题", STATS.meanWrong.toFixed(1), " 题", `全卷 ${TOTAL_Q} 题`, ""],
+      ["需重点关注", STATS.atRisk, " 人", "错题数超过均值 1σ", "var(--crit)"]
+    ];
+    $("#kpis").innerHTML = k.map(([a, b, c, d, col]) => `
+      <div class="kpi">
+        <div class="k">${a}</div>
+        <div class="v"${col ? ` style="color:${col}"` : ""}>${b}<small>${c}</small></div>
+        <div class="d">${d}</div>
+      </div>`).join("");
+  }
+
+  /* ═══ go ═════════════════════════════════════════════════ */
+  $("#anSub").textContent = `${STUDENTS.length} 份卷面 · ${TOTAL_Q} 题 · ${CATS.length} 个知识点 —— 全部为本地计算，可复现，不经过模型`;
+  fillKpis(); fillInsight(); fillReview(); fillScores(); fillRoster();
+  chartQ(); chartC(); chartH(); chartD();
+})();
+</script>
