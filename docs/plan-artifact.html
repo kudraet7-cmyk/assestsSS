@@ -1,0 +1,811 @@
+<title>Exam Insight Build Plan</title>
+<style>
+  /* ---- tokens: light is the base ---- */
+  :root {
+    --paper:        #F5F7FA;
+    --panel:        #FFFFFF;
+    --panel-2:      #EDF1F6;
+    --rule:         #D5DCE6;
+    --rule-soft:    #E4E9F0;
+    --ink:          #171A21;
+    --ink-2:        #4A5262;
+    --ink-3:        #737D8E;
+    --accent:       #0E7C8A;
+    --accent-soft:  #E0F2F4;
+    --accent-line:  #7FC4CC;
+    --signal:       #B4343A;
+    --signal-soft:  #FBE9E9;
+    --shadow:       0 1px 2px rgba(16,22,34,.05), 0 8px 24px -12px rgba(16,22,34,.18);
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --body: "Iowan Old Style", "Charter", "Bitstream Charter", Georgia, "Songti SC", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:       #0C0E13;
+      --panel:       #141821;
+      --panel-2:     #1A1F2A;
+      --rule:        #2A303C;
+      --rule-soft:   #21262F;
+      --ink:         #DDE3EC;
+      --ink-2:       #A0A9B8;
+      --ink-3:       #757F8F;
+      --accent:      #4ECDD8;
+      --accent-soft: #10262A;
+      --accent-line: #2C6A72;
+      --signal:      #F0757A;
+      --signal-soft: #2A1618;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:       #0C0E13;
+    --panel:       #141821;
+    --panel-2:     #1A1F2A;
+    --rule:        #2A303C;
+    --rule-soft:   #21262F;
+    --ink:         #DDE3EC;
+    --ink-2:       #A0A9B8;
+    --ink-3:       #757F8F;
+    --accent:      #4ECDD8;
+    --accent-soft: #10262A;
+    --accent-line: #2C6A72;
+    --signal:      #F0757A;
+    --signal-soft: #2A1618;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 20px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 820px; margin: 0 auto; }
+
+  /* ---- masthead ---- */
+  .masthead {
+    padding: 72px 0 32px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 6vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    font-weight: 600;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .subtitle {
+    font-size: clamp(19px, 3.4vw, 24px);
+    color: var(--ink-2);
+    margin: 0 0 28px;
+    font-style: italic;
+  }
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.6;
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: .03em;
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---- sections ---- */
+  section { padding-top: 56px; }
+  h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 24px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  h2 .num {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.005em;
+    margin: 36px 0 12px;
+    color: var(--ink);
+  }
+  p { max-width: 66ch; margin: 0 0 18px; }
+  a { color: var(--accent); }
+
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .84em;
+    background: var(--panel-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .1em .38em;
+  }
+
+  /* ---- pipeline ---- */
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 10px;
+    margin: 4px 0 28px;
+  }
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent-line);
+    border-radius: 4px;
+    padding: 14px 14px 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stage .k {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .stage .t {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+  .stage .d {
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+  .stage .who {
+    margin-top: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .12em;
+    padding-top: 8px;
+    border-top: 1px dashed var(--rule);
+  }
+  .who.ai  { color: var(--accent); }
+  .who.you { color: var(--signal); }
+
+  /* ---- tables ---- */
+  .scroller { overflow-x: auto; margin: 0 0 24px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    text-align: left;
+    color: var(--ink-3);
+    font-weight: 600;
+    padding: 0 14px 8px 0;
+    border-bottom: 1px solid var(--ink-3);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px 14px 12px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  td:first-child { color: var(--ink); }
+  td.tight { white-space: nowrap; }
+  .phase-id {
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* ---- callout ---- */
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 22px 24px 6px;
+    margin: 0 0 24px;
+    box-shadow: var(--shadow);
+  }
+  .callout h3 { margin-top: 0; }
+  .callout p { max-width: 60ch; }
+  .callout.warn { border-left-color: var(--signal); }
+
+  .keyline {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.5;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 4px;
+    color: var(--ink);
+    padding: 12px 14px;
+    margin: 0 0 20px;
+  }
+
+  /* ---- code / figures ---- */
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 0 0 24px;
+    color: var(--ink-2);
+    box-shadow: var(--shadow);
+  }
+  pre b { color: var(--ink); font-weight: 600; }
+  pre i { color: var(--accent); font-style: normal; }
+  pre s  { color: var(--ink-3); text-decoration: none; }
+
+  figcaption {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    color: var(--ink-3);
+    margin: -14px 0 28px;
+  }
+
+  /* ---- lists ---- */
+  ul, ol { max-width: 66ch; padding-left: 20px; margin: 0 0 18px; }
+  li { margin-bottom: 9px; }
+  li::marker { color: var(--ink-3); }
+  ol li::marker { font-family: var(--mono); font-size: .85em; }
+
+  .plain { list-style: none; padding-left: 0; }
+  .plain li {
+    padding-left: 22px;
+    position: relative;
+  }
+  .plain li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    font-family: var(--mono);
+    color: var(--accent);
+  }
+
+  /* ---- deliverable cards ---- */
+  .docs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+    margin: 0 0 28px;
+  }
+  .doc {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 16px 18px 18px;
+    box-shadow: var(--shadow);
+  }
+  .doc .fmt {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 2px;
+    padding: 2px 6px;
+    margin-bottom: 10px;
+  }
+  .doc h4 {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    color: var(--ink);
+  }
+  .doc p { font-size: 14px; margin: 0; color: var(--ink-2); line-height: 1.45; }
+
+  /* ---- swatches ---- */
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+  .sw {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .sw .chip { height: 34px; width: 96px; display: block; }
+  .sw .lab { display: block; padding: 5px 7px; color: var(--ink-3); }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 22px;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: .03em;
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 620px) {
+    body { font-size: 16px; padding: 0 16px 80px; }
+    .masthead { padding-top: 44px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Build plan · v1</p>
+    <h1>试卷分析助手</h1>
+    <p class="subtitle">Exam Insight</p>
+    <p class="standfirst">
+      A teacher uploads an exam paper and a list of who missed what. The app returns four
+      finished documents — a per-student diagnostic, a class-wide analysis, a WeChat-ready
+      parent message, and an annotated answer key.
+    </p>
+    <div class="meta">
+      <span><b>Repo</b> kudraet7-cmyk/assestsss</span>
+      <span><b>Branch</b> claude/teacher-exam-analysis-app-lglghd</span>
+      <span><b>Date</b> 2026-08-15</span>
+      <span><b>Status</b> awaiting approval</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">01</span> The product in one screen</h2>
+
+    <div class="pipeline">
+      <div class="stage">
+        <span class="k">Step 1</span>
+        <span class="t">Upload</span>
+        <span class="d">Photo, PDF, pasted text, or typed by hand.</span>
+        <span class="who ai">AI</span>
+      </div>
+      <div class="stage">
+        <span class="k">Step 2</span>
+        <span class="t">Review</span>
+        <span class="d">Questions, answers and categories — yours to correct.</span>
+        <span class="who you">YOU</span>
+      </div>
+      <div class="stage">
+        <span class="k">Step 3</span>
+        <span class="t">Scores</span>
+        <span class="d">Paste names and the question numbers each missed.</span>
+        <span class="who you">YOU</span>
+      </div>
+      <div class="stage">
+        <span class="k">Step 4</span>
+        <span class="t">Analyze</span>
+        <span class="d">Error distribution, weak categories, practice bank.</span>
+        <span class="who ai">AI</span>
+      </div>
+      <div class="stage">
+        <span class="k">Step 5</span>
+        <span class="t">Export</span>
+        <span class="d">Four documents, individually or as one zip.</span>
+        <span class="who ai">AI</span>
+      </div>
+    </div>
+
+    <p>
+      Every AI step lands in an editable table before it becomes a PDF.
+      <strong>The teacher is always the last edit, never the AI.</strong>
+    </p>
+
+    <h3>The four deliverables</h3>
+    <div class="docs">
+      <div class="doc">
+        <span class="fmt">PDF · per student</span>
+        <h4>Diagnostic report</h4>
+        <p>Missed questions, mapped categories, and a targeted practice set drawn from their own weak spots.</p>
+      </div>
+      <div class="doc">
+        <span class="fmt">PDF · per class</span>
+        <h4>Class analysis</h4>
+        <p>Error distribution, error rate by category, hardest questions, and where to re-teach.</p>
+      </div>
+      <div class="doc">
+        <span class="fmt">TXT · per student</span>
+        <h4>Parent message</h4>
+        <p>Warm, jargon-free, 150–250 characters. Copy button, paste straight into WeChat.</p>
+      </div>
+      <div class="doc">
+        <span class="fmt">PDF · per class</span>
+        <h4>Answer key</h4>
+        <p>Correct answers, explanations, category tags, and the class error rate beside each question.</p>
+      </div>
+    </div>
+
+    <p>All four bilingual: Simplified Chinese first, English below.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span> Architecture</h2>
+
+    <pre>  <b>BROWSER</b> (Next.js client)              <b>VERCEL</b> (route handlers)
+  ┌──────────────────────────┐        ┌──────────────────────────┐
+  │ Wizard UI                │        │ /api/parse-exam          │
+  │ Session state (Zustand)  │ ─────▶ │ /api/categorize          │ ──▶ <i>Gemini API</i>
+  │ IndexedDB persistence    │ ◀───── │ /api/practice            │
+  │ PDF rendering            │        │ /api/parent-notes        │     <s>key lives server-side,</s>
+  │ <i>Student names stay here</i>    │        │ <s>stateless · no database</s>     │     <s>never shipped to client</s>
+  └──────────────────────────┘        └──────────────────────────┘</pre>
+    <figcaption>Fig. 1 — No database in v1. The session lives in the browser and exports as one .json file.</figcaption>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="tight">Framework</td><td class="tight">Next.js 15 · TypeScript</td><td>First-class Vercel target; route handlers give us a safe server side for the API key</td></tr>
+          <tr><td class="tight">Styling</td><td class="tight">Tailwind v4 + CSS variables</td><td>Fast to build the futuristic system, no runtime cost</td></tr>
+          <tr><td class="tight">State</td><td class="tight">Zustand + IndexedDB</td><td>One session object, survives refresh, needs no backend</td></tr>
+          <tr><td class="tight">AI</td><td class="tight">Gemini via <code>@google/genai</code></td><td>Vision for photographed papers, structured JSON for everything else</td></tr>
+          <tr><td class="tight">PDF</td><td class="tight"><code>@react-pdf/renderer</code>, client-side</td><td>Real vector PDFs, full layout control, no headless Chrome on Vercel</td></tr>
+          <tr><td class="tight">Charts</td><td class="tight">Hand-rolled SVG</td><td>Chart libraries don't render into PDF primitives; bars and heatmaps are simple enough</td></tr>
+          <tr><td class="tight">Zip</td><td class="tight"><code>client-zip</code></td><td>Bundle 40 student PDFs and 40 .txt files into one download</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Model selection</h3>
+    <p>
+      Two tiers, picked per task. A <strong>Pro-tier model</strong> reads the photographed paper and
+      writes explanations, where accuracy outweighs cost. A <strong>Flash-tier model</strong> handles
+      categorization, practice generation and parent messages — high volume, tightly constrained by
+      schema. I'll pin exact model IDs against Google's current lineup when Phase 1 starts rather than
+      hardcoding them now; that list moves quickly. All calls use structured output, so we get typed
+      JSON rather than prose we have to parse.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span> The two decisions that matter most</h2>
+
+    <div class="callout">
+      <h3>Student names never reach the AI</h3>
+      <p>
+        Names stay in browser memory. Every request to Gemini carries anonymized error patterns —
+        <code>student_07 missed Q3, Q7, Q12</code> — or no student reference at all. Names are
+        stitched back in locally when the PDF renders.
+      </p>
+      <p>
+        This isn't only hygiene. It means you can use this with a real class roster without first
+        having a data-handling conversation with your school, and it costs us nothing architecturally.
+      </p>
+    </div>
+
+    <div class="callout">
+      <h3>Practice exercises are generated per category, not per student</h3>
+      <p>
+        The naive build calls Gemini once per student: forty students, forty calls, slow and expensive
+        — and two students with identical weaknesses get different worksheets for no reason.
+      </p>
+      <p>
+        Instead, once analysis is done we know the full set of weak categories across the class, say
+        fourteen. We generate a <strong>practice bank</strong> — six exercises per category, in one
+        batched call — then assemble each student's PDF locally from the exercises matching their own
+        weak categories. Difficulty is tiered inside each category, so a student who missed one
+        question there gets the reinforcement item while a student who missed four gets the full ladder.
+      </p>
+      <div class="keyline">
+        40 students · ~40 API calls  →  ~3 API calls
+      </div>
+      <p>
+        Generation drops from minutes to seconds, cost falls by more than an order of magnitude, and
+        the worksheets become consistent across the class — which is what you want when parents
+        compare notes.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span> Data model</h2>
+
+    <pre><b>Session</b>  { meta, questions[], students[], taxonomy[], practiceBank, analysis }
+
+<b>Question</b> { number, text, type, options?, correctAnswer?, explanation?,
+             categoryIds[], points?, <i>aiConfidence</i> }
+<b>Category</b> { id, nameZh, nameEn, kind: <s>'knowledge' | 'skill'</s>, parentId? }
+<b>Student</b>  { id, name, wrongQuestions[], absent? }
+
+<b>Analysis</b> { byQuestion[], byCategory[], byStudent[], classStats, heatmap }</pre>
+
+    <p>
+      <code>Analysis</code> is pure TypeScript — no AI, fully deterministic, unit-testable. That
+      matters more than it sounds: the numbers on a document you send to a parent should be
+      reproducible and explainable, not the output of a language model.
+    </p>
+
+    <h3>Category taxonomy</h3>
+    <p>
+      Two levels — for maths, <code>代数 Algebra ▸ 一元二次方程 Quadratic equations</code> — with a
+      second skill tag on each question (<em>计算 Computation</em>, <em>概念理解 Conceptual</em>,
+      <em>应用 Application</em>, <em>审题 Reading the problem</em>).
+    </p>
+    <p>
+      Gemini proposes the taxonomy from the paper itself; you edit it in Step 2. Saved taxonomies are
+      reusable, so by your third exam in a subject you're mostly confirming rather than authoring —
+      and that reuse is what makes cross-exam comparison possible later.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span> Input formats</h2>
+
+    <h3>The exam paper — three routes, one review table</h3>
+    <ol>
+      <li><strong>Photo or PDF upload.</strong> Drag in phone photos or a scan. Gemini extracts number, text, options, and the answer if it's printed. Each row carries a confidence score, and anything below threshold is flagged amber — so you check the three rows that need it, not all forty.</li>
+      <li><strong>Paste plain text.</strong> For papers already digital. Cheapest and most accurate path.</li>
+      <li><strong>Manual builder.</strong> Question by question. This is also the edit layer for routes 1 and 2, so it's built once and used everywhere.</li>
+    </ol>
+
+    <div class="callout warn">
+      <h3>If the paper arrives without an answer key</h3>
+      <p>
+        Gemini drafts the answers and flags them <code>unverified</code>; they render with a review
+        marker until you confirm. The answer-key PDF <strong>refuses to export</strong> while any
+        unverified answer remains. A wrong answer key sent to forty families is the worst failure this
+        app can produce, so it gets a hard gate rather than a warning banner.
+      </p>
+    </div>
+
+    <h3>Scores — paste roster and numbers</h3>
+    <pre>王小明: 3,7,12,15
+李思思: 2,3,15
+张伟 3 7 9 21
+陈静：4、11、23        <i>← full-width colon and 、 both accepted</i>
+刘洋: 无               <i>← 无 / 满分 / - all mean zero wrong</i></pre>
+
+    <p>
+      The parser is deliberately forgiving about separators and stray punctuation, expands ranges like
+      <code>3-5</code>, and flags duplicate names. It checks every number against the paper's question
+      range and shows a live preview as you type — so <code>Q47</code> on a 30-question paper surfaces
+      immediately, not inside a finished PDF.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span> What's in each document</h2>
+
+    <h3>Per-student diagnostic · 3–4 pages</h3>
+    <ul class="plain">
+      <li><strong>Cover</strong> — name, exam, score summary, and a category radar chart, so one glance tells a parent where their child stands.</li>
+      <li><strong>Missed questions</strong> — each in full, with the correct answer, a short explanation, and its category tag.</li>
+      <li><strong>Weakness summary</strong> — categories ranked by the share of that category's questions missed, not raw counts, which unfairly punish well-represented topics.</li>
+      <li><strong>Targeted practice</strong> — 3–6 exercises per weak category, difficulty-laddered.</li>
+      <li><strong>Answer page</strong> — last page, so the sheet can be handed over intact and the answers torn off.</li>
+    </ul>
+
+    <h3>Class analysis · 4–5 pages</h3>
+    <ul class="plain">
+      <li>Error rate by question — sorted bars, with a threshold line marking questions more than half the class missed.</li>
+      <li>Error rate by category — the headline chart, normalized by attempt count so a two-question category isn't compared naively against a nine-question one.</li>
+      <li>Student × category heatmap — clusters of struggling students become visible.</li>
+      <li>Distribution histogram with mean, median and σ.</li>
+      <li><strong>Teaching focus</strong> — a short written section naming the three categories most worth re-teaching, grounded strictly in the computed numbers.</li>
+    </ul>
+
+    <h3>Parent message</h3>
+    <p>
+      A genuine opening about the child, what went well, one or two concrete areas in plain language
+      (no category codes, no jargon), what practice went home, and a warm close. Tone is tunable —
+      <em>Warm / Neutral / Direct</em> — with a teacher-signature field. Downloadable individually or
+      as a zip, plus a per-student <strong>Copy</strong> button, since you'll usually paste straight
+      into WeChat from the browser.
+    </p>
+
+    <h3>Answer key</h3>
+    <p>
+      Every question with its answer, explanation, category tags, and class error rate alongside — so
+      the same document works as your marking reference and as your post-exam review script.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">07</span> Visual design</h2>
+
+    <p>
+      Futuristic, but you'll be using it at 10pm on a Sunday — so: clean, high-contrast, quiet.
+      Dark-first, a near-black ground with elevated glass panels and hairline borders, and light mode
+      built as a real second theme rather than an afterthought, since you may present this on a
+      classroom projector.
+    </p>
+
+    <div class="swatches">
+      <span class="sw"><span class="chip" style="background:#0A0C10"></span><span class="lab">#0A0C10 ground</span></span>
+      <span class="sw"><span class="chip" style="background:#151A22"></span><span class="lab">#151A22 panel</span></span>
+      <span class="sw"><span class="chip" style="background:linear-gradient(90deg,#22D3EE,#8B5CF6)"></span><span class="lab">accent ramp</span></span>
+      <span class="sw"><span class="chip" style="background:#22D3EE"></span><span class="lab">#22D3EE cyan</span></span>
+      <span class="sw"><span class="chip" style="background:#8B5CF6"></span><span class="lab">#8B5CF6 violet</span></span>
+    </div>
+
+    <p>
+      <strong>One accent gradient</strong>, cyan to violet, carries progress, primary actions and data
+      emphasis. Everything else stays neutral — a single accent in a restrained field is what reads as
+      futuristic; five accents read as a toy.
+    </p>
+    <p>
+      <strong>Chart colors are a separate, accessible palette</strong>, because half of these PDFs will
+      come out of a school laser printer and the error-rate charts have to survive black and white.
+      Sequential ramps, not rainbow. Inter for Latin, Noto Sans SC for Chinese, a mono face for
+      question numbers and figures, tabular numerals throughout the tables. Motion is limited to step
+      transitions and chart draw-on — nothing loops, nothing pulses.
+    </p>
+    <p>
+      The wizard rail stays on the left throughout, so you can jump back to Step 2 and fix a category
+      without losing anything downstream. Analysis recomputes on its own.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span> Phases</h2>
+
+    <p>Each phase ends with something deployed and usable. Nothing here is a big-bang.</p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Phase</th><th>Scope</th><th>Ends with</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tight"><span class="phase-id">0</span> Foundation</td>
+            <td>Move ISKANDER to <code>/legacy-game</code>, scaffold Next.js at the repo root, build the design system, wire Vercel and the env vars</td>
+            <td>A live URL with the shell UI and a verified Gemini connection</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">1</span> Ingestion</td>
+            <td>Three input modes, upload pipeline, vision parsing, review table with confidence flags</td>
+            <td>You can upload a real paper and see it correctly parsed</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">2</span> Categorize</td>
+            <td>Taxonomy generation and editing, roster parser with live preview, deterministic analysis engine and its tests</td>
+            <td>Real numbers for a real class — useful already, with zero PDFs</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">3</span> PDF engine</td>
+            <td>react-pdf setup, CJK font pipeline, shared document chrome, answer key and class analysis with charts</td>
+            <td>Two of the four documents shipping</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">4</span> Practice</td>
+            <td>Practice bank, difficulty laddering, teacher review screen, per-student PDF, zip export</td>
+            <td>Three of four</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">5</span> Parent notes</td>
+            <td>Message generation, tone control, signature, copy buttons, .txt and zip export</td>
+            <td>All four documents complete</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">6</span> Hardening</td>
+            <td>Session save and load, error and retry handling, rate limiting, cost guard, empty states, mobile layout, print QA on a real printer</td>
+            <td>Ready for a real exam</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Phases 3 and 4 are the heavy ones. <strong>Phase 2 is where the app first becomes useful to
+      you</strong> — worth stopping there and running a real exam through it before we build any PDFs,
+      because what you learn will change what goes into them.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">09</span> Risks, and what we do about them</h2>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Risk</th><th>Mitigation</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CJK fonts in PDFs — Chinese needs an embedded font, and the full Noto Sans SC is ~10MB</td>
+            <td>Pre-subset to GB2312 plus Latin at build time (~3MB), served once and cached; react-pdf subsets again per document so the PDFs stay small. Budgeted as real Phase 3 work, not an afterthought.</td>
+          </tr>
+          <tr>
+            <td>OCR accuracy on phone photos, especially handwriting and maths notation</td>
+            <td>Per-question confidence scoring, amber review rows, and the manual builder always available as an escape hatch. This is the assumption most worth validating early — we test with your actual papers in Phase 1.</td>
+          </tr>
+          <tr>
+            <td>Vercel function timeout (60s on Hobby)</td>
+            <td>No long call anywhere. Parsing is chunked by page, generation batched and streamed. The practice-bank design exists partly for this reason.</td>
+          </tr>
+          <tr>
+            <td>Hallucinated practice questions or explanations</td>
+            <td>Nothing reaches a PDF without passing a teacher review screen. For maths we request worked solutions and verify numeric answers programmatically where the form allows.</td>
+          </tr>
+          <tr>
+            <td>API cost drift</td>
+            <td>Per-session token accounting shown in the UI and a configurable ceiling. A 30-question paper for 40 students should land in the low tens of US cents — I'll measure and report real numbers at the end of Phase 4 rather than promise them now.</td>
+          </tr>
+          <tr>
+            <td>Gemini rate limits</td>
+            <td>Exponential backoff, request queueing, and partial-result recovery so a limit hit late in a batch doesn't discard the work already done.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">10</span> Open questions</h2>
+    <p>None of these block Phase 0. All are worth answering by Phase 2.</p>
+    <ol>
+      <li><strong>Subject and grade.</strong> Taxonomy quality depends on it, and one sample paper from you is worth more than any amount of guessing.</li>
+      <li><strong>Class size and exam frequency.</strong> Determines whether Phase 6 needs bulk workflows.</li>
+      <li><strong>Partial credit.</strong> Right now a question is right or wrong; essay and calculation questions often aren't. Per-question scores are a contained change — but they make score entry meaningfully slower, so it should be a deliberate choice rather than a default.</li>
+      <li><strong>Cross-exam progress tracking.</strong> Explicitly out of scope for v1 and the most likely v2. The data model is shaped so adding it later means adding a store, not a rewrite.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="num">11</span> To start Phase 0</h2>
+    <ul class="plain">
+      <li>A Gemini API key from Google AI Studio, added in the Vercel dashboard as <code>GEMINI_API_KEY</code> — not in a file in this repo.</li>
+      <li>Confirmation that moving ISKANDER to <code>/legacy-game</code> is fine.</li>
+      <li>Ideally one real exam paper and one real wrong-answer list, anonymized if you prefer. Phase 1 is far better work with a real artifact than a synthetic one.</li>
+    </ul>
+  </section>
+
+  <footer>
+    试卷分析助手 · Exam Insight — build plan v1 · docs/PLAN.md
+  </footer>
+
+</div>
