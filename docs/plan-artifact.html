@@ -364,6 +364,23 @@
   .sw .chip { height: 34px; width: 96px; display: block; }
   .sw .lab { display: block; padding: 5px 7px; color: var(--ink-3); }
 
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 26px; }
+  .ba > div {
+    border: 1px solid var(--rule); border-radius: 4px; padding: 15px 17px 4px;
+    background: var(--panel); box-shadow: var(--shadow);
+  }
+  .ba .hd {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .ba .was .hd { color: var(--signal); }
+  .ba .now .hd { color: var(--accent); }
+  .ba ul { font-size: 14px; padding-left: 17px; }
+  .ba li { margin-bottom: 7px; color: var(--ink-2); line-height: 1.45; }
+  .ba .now { border-left: 3px solid var(--accent); }
+  .ba .was { border-left: 3px solid var(--signal); }
+  @media (max-width: 620px) { .ba, .docs, .pipeline { grid-template-columns: 1fr; } }
+
   footer {
     margin-top: 72px;
     padding-top: 22px;
@@ -385,7 +402,7 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="eyebrow">Build plan · v1</p>
+    <p class="eyebrow">Build plan · v2</p>
     <h1>试卷分析助手</h1>
     <p class="subtitle">Exam Insight</p>
     <p class="standfirst">
@@ -397,7 +414,7 @@
       <span><b>Repo</b> kudraet7-cmyk/assestsss</span>
       <span><b>Branch</b> claude/teacher-exam-analysis-app-lglghd</span>
       <span><b>Date</b> 2026-08-15</span>
-      <span><b>Status</b> awaiting approval</span>
+      <span><b>Status</b> v2 · sample report built</span>
     </div>
   </header>
 
@@ -614,12 +631,100 @@
       range and shows a live preview as you type — so <code>Q47</code> on a 30-question paper surfaces
       immediately, not inside a finished PDF.
     </p>
+
+    <div class="callout">
+      <h3>Optional, and the single biggest lever on report quality</h3>
+      <div class="keyline">王小明: 3<b>B</b>,7<b>C</b>,12<b>A</b>,15<b>D</b></div>
+      <p>
+        Appending the letter they chose costs one keystroke per question. Knowing only <em>that</em> Q30
+        was missed gets you “the answer is <code>connect with</code>”. Knowing they chose <strong>B. to</strong>
+        gets you “you picked <code>to</code>, which is for connecting <em>devices</em> — connect the printer
+        <strong>to</strong> the computer; people take <strong>with</strong>.”
+      </p>
+      <p>
+        That's the difference between a restatement and a correction. It also lets the class report name
+        <em>which distractor</em> the class fell for — often the single most useful fact from an exam.
+        Entirely optional and per-question: <code>3B,7,12A</code> is valid, and questions without a letter
+        just get the shorter treatment.
+      </p>
+    </div>
+
+    <h3>Subjective loss, tracked separately</h3>
+    <p>
+      Your reference report shows 2 objective misses against 84.5 / 100 — leaving 13.5 marks of subjective
+      loss entirely invisible. So the session records a per-student subjective deduction alongside the
+      wrong-question list, and the report names it. Otherwise the document quietly implies a student's
+      only problem is two multiple-choice questions when most of their lost marks are elsewhere.
+    </p>
   </section>
 
   <section>
     <h2><span class="num">06</span> What's in each document</h2>
 
-    <h3>Per-student diagnostic · 3–4 pages</h3>
+    <p>
+      You sent a reference report to work from. It reads as a solid first draft, and the two things
+      you flagged — wasted space and thin content — are both real and both fixable. A rebuilt version
+      of that exact report, same student and same exam, sits in <code>docs/samples/</code>: it carries
+      roughly three times the content in a single page.
+    </p>
+
+    <div class="ba">
+      <div class="was">
+        <div class="hd">What cost space</div>
+        <ul>
+          <li>Full-width colored section bars, in four different colors carrying no meaning</li>
+          <li>Four oversized stat tiles for four numbers</li>
+          <li>Single-column full-width lines holding four-word exercises</li>
+          <li>The teacher comment restating every number already in the stat row</li>
+          <li>Section numbering skipping from 一 to 三</li>
+        </ul>
+      </div>
+      <div class="now">
+        <div class="hd">What replaced it</div>
+        <ul>
+          <li>Hairline rules with small-caps labels; one accent plus semantic red / green / amber</li>
+          <li>One stat strip, plus a distribution track showing where the student sits in the class</li>
+          <li>Two columns throughout; trailing blocks pair up rather than orphaning a page</li>
+          <li>The comment spends its space on diagnosis and the next action instead</li>
+          <li>Nothing is stated twice, and the last page is filled or dropped</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="ba">
+      <div class="was">
+        <div class="hd">What weakened the content</div>
+        <ul>
+          <li>Only the correct answer shown — never what the student actually picked</li>
+          <li>A practice item that re-asked the missed question verbatim: <code>connect ___ each other</code></li>
+          <li>A study tip numbered as if it were an exercise, answered with “no fixed answer”</li>
+          <li>A blanket answer-key dump, identical for every student</li>
+          <li>13.5 marks of subjective loss invisible behind “2 questions wrong”</li>
+        </ul>
+      </div>
+      <div class="now">
+        <div class="hd">What replaced it</div>
+        <ul>
+          <li>Their wrong answer beside the right one, an error-cause tag, and why that distractor is wrong</li>
+          <li>Contrast pairs that teach the rule: <code>connect the printer <b>to</b></code> against <code>connect <b>with</b> friends</code></li>
+          <li>A three-tier ladder — 基础巩固 → 同类变式 → 中考衔接 — each time-budgeted</li>
+          <li>主观题订正 filtered to this student, each with the specific defect named</li>
+          <li>Subjective loss surfaced, and three dated tasks a parent can tick off</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Density rules every document follows</h3>
+    <ul class="plain">
+      <li>No full-width color section bars — a hairline rule and a small-caps label cost a fifth of the height.</li>
+      <li>One accent, plus semantic red / green / amber. A different color per section carries no information.</li>
+      <li>Two columns wherever items are short.</li>
+      <li>Never state the same number twice.</li>
+      <li>Every section earns its header — a tip dressed as an exercise is padding.</li>
+      <li>Fill the last page or drop it. A page 20% full is the format failing.</li>
+    </ul>
+
+    <h3>Per-student diagnostic · 1–3 pages, density-fit</h3>
     <ul class="plain">
       <li><strong>Cover</strong> — name, exam, score summary, and a category radar chart, so one glance tells a parent where their child stands.</li>
       <li><strong>Missed questions</strong> — each in full, with the correct answer, a short explanation, and its category tag.</li>
@@ -654,7 +759,77 @@
   </section>
 
   <section>
-    <h2><span class="num">07</span> Visual design</h2>
+    <h2><span class="num">07</span> The past-paper bank</h2>
+
+    <p>
+      This is the largest content upgrade available to the product, and it changes the AI's job from
+      <strong>generation</strong> to <strong>retrieval</strong>.
+    </p>
+    <p>
+      An AI-invented practice question is plausible-sounding and unaccountable. A real 上海中考 question
+      carries authentic phrasing, calibrated difficulty, and — critically — <strong>provenance</strong>:
+      <code>2021 · 上海中考 · 第 32 题</code> printed on the page. That label changes how a student and a
+      parent treat the worksheet, and it removes hallucination risk from the highest-stakes part of the
+      document. The exercises also get better as the bank grows, instead of being re-invented every run.
+    </p>
+
+    <pre>  <b>真题 PDFs</b> ──▶ <s>same vision parser as §05</s> ──▶ auto-tag against your taxonomy
+   <i>(yours)</i>        <s>(already built in Phase 1)</s>        ──▶ dedupe ──▶ review once
+                                                                  │
+                                                                  ▼
+                                                    <b>item bank</b> <s>(local, reusable)</s>
+                                                                  │
+  student's weak categories ────── retrieve, difficulty-matched ──┘</pre>
+    <figcaption>Fig. 2 — Ingestion reuses the Phase 1 parser, so this costs far less to build than it looks.</figcaption>
+
+    <h3>Difficulty matching is the part that needs care</h3>
+    <p>
+      Your reference report is a <strong>Grade 6</strong> paper. Handing a 六年级 student raw 高考 questions
+      would be discouraging and pedagogically useless. So retrieval is gated on a <code>gradeFloor</code>
+      field, and past-paper items are the <strong>top tier of a ladder</strong>, never the whole worksheet.
+    </p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Student level</th><th>★☆☆ 基础</th><th>★★☆ 变式</th><th>★★★ 衔接</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="tight">预初 / 初一</td><td>from their own error</td><td>generated variant</td><td>中考 单选，<code>gradeFloor ≤ 7</code></td></tr>
+          <tr><td class="tight">初二 / 初三</td><td>中考 basic</td><td>中考 mid</td><td>中考 完形 / 阅读</td></tr>
+          <tr><td class="tight">高中</td><td>中考 as warm-up</td><td>高考 单项 / 语法填空</td><td>高考 阅读 / 翻译</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      In the sample report, exactly 4 of 20 items sit at 中考 tier, all on the same knowledge points the
+      student actually missed — <code>put off</code>, <code>connect with</code>, concessive
+      <code>although</code>. That ratio is a setting, not a constant.
+    </p>
+
+    <div class="callout warn">
+      <h3>What I can and can't supply</h3>
+      <p>
+        <strong>I can build</strong> the ingestion pipeline, the tagging, the dedupe, the retrieval, the
+        difficulty gating, and the provenance stamping.
+      </p>
+      <p>
+        <strong>I can't ship you the corpus.</strong> I don't have a licensed, verified set of 上海中考 or
+        高考 past papers, and inventing citations — printing <code>2019·上海中考·第 38 题</code> on a question
+        that isn't one — would be worse than no citation at all. Papers you already own are the input; the
+        app turns them into a reusable bank in one pass.
+      </p>
+      <p>
+        So in the sample report those four items are marked <code>中考题型</code> — 中考-style — rather than
+        given a fabricated year and number. Once your papers are ingested, that tag is replaced
+        automatically by the real source line.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span> Visual design</h2>
 
     <p>
       Futuristic, but you'll be using it at 10pm on a Sunday — so: clean, high-contrast, quiet.
@@ -690,7 +865,7 @@
   </section>
 
   <section>
-    <h2><span class="num">08</span> Phases</h2>
+    <h2><span class="num">09</span> Phases</h2>
 
     <p>Each phase ends with something deployed and usable. Nothing here is a big-bang.</p>
 
@@ -722,16 +897,21 @@
           </tr>
           <tr>
             <td class="tight"><span class="phase-id">4</span> Practice</td>
-            <td>Practice bank, difficulty laddering, teacher review screen, per-student PDF, zip export</td>
+            <td>Practice bank, three-tier ladder, distractor analysis, teacher review screen, per-student PDF, zip export</td>
             <td>Three of four</td>
           </tr>
           <tr>
-            <td class="tight"><span class="phase-id">5</span> Parent notes</td>
+            <td class="tight"><span class="phase-id">5</span> Paper bank</td>
+            <td>Ingest your 中考 / 高考 papers through the Phase 1 parser — auto-tag, dedupe, gradeFloor gating, provenance stamping, retrieval into tier 3</td>
+            <td>Practice items become real past-paper questions, with citations</td>
+          </tr>
+          <tr>
+            <td class="tight"><span class="phase-id">6</span> Parent notes</td>
             <td>Message generation, tone control, signature, copy buttons, .txt and zip export</td>
             <td>All four documents complete</td>
           </tr>
           <tr>
-            <td class="tight"><span class="phase-id">6</span> Hardening</td>
+            <td class="tight"><span class="phase-id">7</span> Hardening</td>
             <td>Session save and load, error and retry handling, rate limiting, cost guard, empty states, mobile layout, print QA on a real printer</td>
             <td>Ready for a real exam</td>
           </tr>
@@ -744,10 +924,15 @@
       you</strong> — worth stopping there and running a real exam through it before we build any PDFs,
       because what you learn will change what goes into them.
     </p>
+    <p>
+      Phase 5 sits deliberately <em>after</em> a working per-student PDF. The bank makes good reports
+      better; it can't rescue a report whose layout and explanations aren't right yet, and building it
+      earlier would mean rebuilding retrieval once the document design settled.
+    </p>
   </section>
 
   <section>
-    <h2><span class="num">09</span> Risks, and what we do about them</h2>
+    <h2><span class="num">10</span> Risks, and what we do about them</h2>
 
     <div class="scroller">
       <table>
@@ -785,7 +970,7 @@
   </section>
 
   <section>
-    <h2><span class="num">10</span> Open questions</h2>
+    <h2><span class="num">11</span> Open questions</h2>
     <p>None of these block Phase 0. All are worth answering by Phase 2.</p>
     <ol>
       <li><strong>Subject and grade.</strong> Taxonomy quality depends on it, and one sample paper from you is worth more than any amount of guessing.</li>
@@ -796,11 +981,12 @@
   </section>
 
   <section>
-    <h2><span class="num">11</span> To start Phase 0</h2>
+    <h2><span class="num">12</span> To start Phase 0</h2>
     <ul class="plain">
       <li>A Gemini API key from Google AI Studio, added in the Vercel dashboard as <code>GEMINI_API_KEY</code> — not in a file in this repo.</li>
       <li>Confirmation that moving ISKANDER to <code>/legacy-game</code> is fine.</li>
       <li>Ideally one real exam paper and one real wrong-answer list, anonymized if you prefer. Phase 1 is far better work with a real artifact than a synthetic one.</li>
+      <li>For Phase 5, whatever 上海中考 / 高考 past papers you already have, in any format. Quantity matters more than tidiness — the parser handles the mess.</li>
     </ul>
   </section>
 

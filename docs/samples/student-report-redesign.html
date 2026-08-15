@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>错题精讲与强化练习 · 浦绎心</title>
+<style>
+  @page { size: A4; margin: 6mm 9mm 5mm; }
+
+  :root {
+    --ink:      #14181F;
+    --ink-2:    #3E4753;
+    --ink-3:    #6B7480;
+    --ink-4:    #9AA2AE;
+    --rule:     #D6DBE2;
+    --rule-2:   #EAEDF1;
+    --tint:     #F4F6F9;
+    --accent:   #125C7A;
+    --accent-2: #E7F1F6;
+    --accent-3: #A9CBDA;
+    --err:      #B3272D;
+    --err-bg:   #FCEDED;
+    --ok:       #1C6B48;
+    --ok-bg:    #E9F4EE;
+    --warn:     #8A5A10;
+    --warn-bg:  #FBF2E0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    margin: 0;
+    font-family: "DejaVu Sans", "WenQuanYi Zen Hei", "Noto Sans SC", sans-serif;
+    font-size: 8.5pt;
+    line-height: 1.36;
+    color: var(--ink);
+  }
+
+  b, strong { font-weight: bold; }
+  .en { font-family: "DejaVu Sans", sans-serif; }
+
+  /* ═══ masthead ═══ */
+  .mast {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1.6pt solid var(--ink);
+    padding-bottom: 4px;
+  }
+  .mast .l .title {
+    font-size: 12pt; font-weight: bold; letter-spacing: .01em; line-height: 1.1;
+  }
+  .mast .l .sub {
+    font-size: 7.6pt; color: var(--ink-3); margin-top: 2px;
+  }
+  .mast .r { text-align: right; white-space: nowrap; }
+  .mast .r .name { font-size: 12pt; font-weight: bold; line-height: 1.1; }
+  .mast .r .id { font-size: 7.6pt; color: var(--ink-3); margin-top: 2px; }
+
+  /* ═══ stat strip ═══ */
+  .stats {
+    display: flex;
+    align-items: stretch;
+    border: .7pt solid var(--rule);
+    border-top: none;
+    background: var(--tint);
+  }
+  .stat {
+    padding: 3px 8px;
+    border-right: .7pt solid var(--rule);
+    text-align: center;
+    flex: 0 0 auto;
+  }
+  .stat .v { font-size: 12pt; font-weight: bold; line-height: 1.05; }
+  .stat .v small { font-size: 7pt; font-weight: normal; color: var(--ink-3); }
+  .stat .k { font-size: 6.8pt; color: var(--ink-3); margin-top: 1px; letter-spacing: .02em; }
+  .stat.up .v { color: var(--ok); }
+  .stat.down .v { color: var(--err); }
+
+  .distro { flex: 1 1 auto; padding: 6px 12px 4px; border-right: none; }
+  .distro .lbl {
+    display: flex; justify-content: space-between;
+    font-size: 6.6pt; color: var(--ink-3); margin-bottom: 3px;
+  }
+  .track {
+    position: relative; height: 7px; border-radius: 3.5px;
+    background: linear-gradient(90deg,#E3E8ED 0%,#C8D4DC 55%,#A9CBDA 100%);
+  }
+  .mark { position: absolute; top: -2.5px; width: 2px; height: 12px; }
+  .mark.avg  { background: var(--ink-3); }
+  .mark.me   { background: var(--accent); width: 2.6px; height: 15px; top: -4px; }
+  .mark span {
+    position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+    font-size: 6.4pt; white-space: nowrap; font-weight: bold;
+  }
+  .mark.avg span { color: var(--ink-3); font-weight: normal; }
+  .mark.me  span { color: var(--accent); }
+
+  /* ═══ diagnosis row ═══ */
+  .diag {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 3px 0 3px; border-bottom: .7pt solid var(--rule-2);
+  }
+  .diag .lead { font-size: 7.4pt; color: var(--ink-3); letter-spacing: .04em; }
+  .chip {
+    font-size: 7.6pt; padding: 1.5px 7px; border-radius: 9px;
+    background: var(--err-bg); color: var(--err); border: .6pt solid #EBC4C5;
+    white-space: nowrap;
+  }
+  .chip b { font-weight: bold; }
+  .chip.mild { background: var(--warn-bg); color: var(--warn); border-color: #E8D5A8; }
+
+  .comment {
+    font-size: 7.2pt; line-height: 1.38; color: var(--ink-2);
+    padding: 4px 7px; margin-top: 3px;
+    background: var(--accent-2); border-left: 2.2pt solid var(--accent);
+  }
+  .comment b { color: var(--ink); }
+
+  /* ═══ sections ═══ */
+  h2 {
+    font-size: 8.4pt; font-weight: bold; letter-spacing: .1em;
+    margin: 5px 0 3px; padding-bottom: 1.5px;
+    border-bottom: 1pt solid var(--ink);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  h2 .note { font-size: 7pt; font-weight: normal; color: var(--ink-3); letter-spacing: 0; }
+
+  h3 {
+    font-size: 7.5pt; font-weight: bold; margin: 4px 0 2px;
+    color: var(--accent); display: flex; align-items: center; gap: 6px;
+  }
+  h3::before { content: ""; width: 3px; height: 9px; background: var(--accent); flex: 0 0 auto; }
+  h3 .rate { margin-left: auto; font-weight: normal; font-size: 7pt; color: var(--ink-3); }
+
+  /* ═══ wrong-answer cards ═══ */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .card {
+    border: .7pt solid var(--rule); border-top: 1.6pt solid var(--err);
+    padding: 3px 6px 4px;
+  }
+  .card .hd {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 7.2pt; color: var(--ink-3); margin-bottom: 3px;
+  }
+  .card .hd .q { font-size: 8.2pt; font-weight: bold; color: var(--ink); }
+  .card .hd .tag {
+    background: var(--tint); border: .6pt solid var(--rule);
+    padding: .5px 5px; border-radius: 2px; color: var(--ink-2);
+  }
+  .card .hd .cls { margin-left: auto; white-space: nowrap; }
+  .stem { font-size: 8.1pt; margin: 1px 0 3px; }
+  .ansrow { display: flex; gap: 9px; font-size: 7.8pt; margin-bottom: 3px; }
+  .ansrow .yours { color: var(--err); }
+  .ansrow .right { color: var(--ok); font-weight: bold; }
+  .cause {
+    display: inline-block; font-size: 7.2pt; padding: .5px 6px; border-radius: 2px;
+    background: var(--warn-bg); color: var(--warn); border: .6pt solid #E8D5A8;
+    margin-bottom: 3px;
+  }
+  .exp { font-size: 7.05pt; line-height: 1.34; color: var(--ink-2); }
+  .exp b { color: var(--ink); }
+  .exp .dis {
+    display: block; margin-top: 3px; padding-top: 3px;
+    border-top: .6pt dashed var(--rule); color: var(--ink-3); font-size: 6.8pt;
+  }
+
+  /* ═══ practice ═══ */
+  .tier {
+    display: inline-block; font-size: 6.8pt; letter-spacing: .04em;
+    padding: .5px 5px; border-radius: 2px; margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .t1 { background: #E9F4EE; color: var(--ok);     border: .6pt solid #BEDDCB; }
+  .t2 { background: #E7F1F6; color: var(--accent); border: .6pt solid var(--accent-3); }
+  .t3 { background: #F3ECF7; color: #5B3A78;       border: .6pt solid #D2BFE0; }
+
+  .band {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 7.4pt; color: var(--ink-3);
+    margin: 3px 0 1.5px; padding-bottom: 1px;
+    border-bottom: .6pt dotted var(--rule);
+  }
+  .band .hint { margin-left: auto; font-size: 6.8pt; }
+
+  ol.ex { margin: 0; padding-left: 17px; }
+  ol.ex li { margin-bottom: 1px; font-size: 7.7pt; line-height: 1.3; }
+  ol.ex li::marker { color: var(--ink-4); font-size: 7.4pt; }
+  .cue { color: var(--ink-3); font-size: 6.85pt; }
+  .src {
+    color: #5B3A78; font-size: 6.8pt; white-space: nowrap;
+    border: .6pt solid #D2BFE0; border-radius: 2px; padding: 0 3px; background: #F9F5FC;
+  }
+  .two { columns: 2; column-gap: 14px; }
+  .two ol.ex { break-inside: auto; }
+  ol.ex li { break-inside: avoid; }
+
+  /* ═══ passage ═══ */
+  .passage {
+    border: .7pt solid var(--rule); background: #FCFDFE;
+    padding: 4px 7px; font-size: 7.1pt; line-height: 1.36; columns: 2; column-gap: 14px;
+  }
+  .passage .ptitle {
+    font-size: 7.2pt; color: var(--ink-3); letter-spacing: .04em;
+    margin-bottom: 2px; display: flex; justify-content: space-between; column-span: all;
+  }
+
+  /* ═══ answers ═══ */
+  .ans {
+    background: var(--tint); border: .7pt solid var(--rule);
+    padding: 4px 7px; font-size: 6.9pt; line-height: 1.4;
+  }
+  .ans .grp { margin-bottom: 2px; }
+  .ans .grp b { color: var(--ink); }
+  .ans .why { color: var(--ink-3); }
+
+  /* ═══ tasks ═══ */
+  .tasks { display: grid; grid-template-columns: 1fr; gap: 4px; }
+  .footrow { display: grid; grid-template-columns: 1.62fr 1fr; gap: 10px; align-items: start; }
+  h2.sub2 { margin-top: 0; }
+  .task {
+    border: .7pt solid var(--rule); border-left: 2.2pt solid var(--accent);
+    padding: 3px 6px; font-size: 7pt;
+  }
+  .task .d { font-size: 6.3pt; color: var(--ink-3); margin-top: 1px; }
+  .box {
+    display: inline-block; width: 7px; height: 7px;
+    border: .8pt solid var(--ink-3); margin-right: 5px; vertical-align: 0;
+  }
+
+  footer {
+    margin-top: 4px; padding-top: 2.5px; border-top: .7pt solid var(--rule);
+    font-size: 6.8pt; color: var(--ink-4); line-height: 1.45;
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  .avoid { break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<div class="mast">
+  <div class="l">
+    <div class="title">错题精讲与强化练习</div>
+    <div class="sub">2026 暑 · 预初卓越英语（六年级上 Starter &amp; U1）· 阶段测试 · 卷面第 20 份</div>
+  </div>
+  <div class="r">
+    <div class="name">浦绎心</div>
+    <div class="id">2026-08-15 · 报告编号 E26S-020</div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="v">84.5<small>/100</small></div><div class="k">本人总分</div></div>
+  <div class="stat"><div class="v" style="color:var(--ink-2)">74.8</div><div class="k">班级平均</div></div>
+  <div class="stat up"><div class="v">+9.7</div><div class="k">高于平均</div></div>
+  <div class="stat"><div class="v">3<small>/22</small></div><div class="k">班级排名</div></div>
+  <div class="stat"><div class="v" style="color:var(--err)">2<small>题</small></div><div class="k">客观题失分</div></div>
+  <div class="stat"><div class="v" style="color:var(--warn)">13.5<small>分</small></div><div class="k">主观题失分</div></div>
+  <div class="stat distro">
+    <div class="lbl"><span>班级最低 52</span><span>本班分数分布</span><span>最高 92</span></div>
+    <div class="track">
+      <div class="mark avg" style="left:57%"><span>平均 74.8</span></div>
+      <div class="mark me"  style="left:81%"><span>你 84.5</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="diag">
+  <span class="lead">本卷薄弱考点</span>
+  <span class="chip">固定搭配与连词 <b>错 1 / 共 6 题</b></span>
+  <span class="chip">阅读·短语辨析 <b>错 1 / 共 4 题</b></span>
+  <span class="chip mild">主观题表达完整度 <b>失 13.5 分</b></span>
+</div>
+
+<div class="comment">
+  <b>老师点评：</b>客观题只错 2 题，语法主干是稳的，失分集中在<b>「介词与动词短语的细微区别」</b>——connect with 对 connect to、put up 对 put on/off，属于「知道意思、选不准搭配」，靠背单词补不上，要成组对比记忆，本页练习即按对比编排。<b>更该留意的是主观题丢了 13.5 分</b>：答句结构不完整（漏主语、时态不统一）。本周先做第二部分对比练习，再照第三部分订正句式。下阶段目标 <b>88 分</b>。
+</div>
+
+<h2><span>一、错题精讲</span><span class="note">共 2 题 · 含干扰项分析</span></h2>
+<div class="cards">
+  <div class="card avoid">
+    <div class="hd"><span class="q">第 30 题</span><span class="tag">词汇 · 固定搭配</span><span class="cls">班级错误率 41%</span></div>
+    <div class="stem"><span class="en">It helped us connect ____ each other.</span></div>
+    <div class="ansrow">
+      <span class="yours">你的作答 ✗ B. to</span>
+      <span class="right">正确答案 ✓ A. with</span>
+    </div>
+    <span class="cause">错因：介词搭配混淆</span>
+    <div class="exp">
+      <b>connect with sb</b> = 与某人建立联系、交往，强调<b>人与人之间</b>的双向关系。<br>
+      同族记忆：communicate <b>with</b> / get on <b>with</b> / share sth <b>with</b> sb / compare A <b>with</b> B。
+      <span class="dis"><b>为什么 B 错：</b>connect A <b>to</b> B 多指<b>物理连接</b>——connect the printer <b>to</b> the computer（把打印机接到电脑上）。人不是设备，所以这里必须用 with。记住一句话：<b>接线用 to，交往用 with。</b></span>
+    </div>
+  </div>
+
+  <div class="card avoid">
+    <div class="hd"><span class="q">第 62 题</span><span class="tag">阅读 · 短语辨析</span><span class="cls">班级错误率 36%</span></div>
+    <div class="stem"><span class="en">Ray ____ his hand and the teacher let him answer.</span></div>
+    <div class="ansrow">
+      <span class="yours">你的作答 ✗ C. put on</span>
+      <span class="right">正确答案 ✓ A. put up</span>
+    </div>
+    <span class="cause">错因：动词短语成组未掌握</span>
+    <div class="exp">
+      <b>put up one's hand</b> = 举手（= raise one's hand）。<b>up 表「向上」</b>，手往上抬 → 举手。<br>
+      语境提示：后半句 <span class="en">the teacher let him answer</span>（老师让他回答）只可能由「举手」引出。
+      <span class="dis"><b>put 家族一次记全：</b>put <b>on</b> 穿上／上演 · put <b>off</b> 推迟 · put <b>out</b> 扑灭 · put <b>away</b> 收好 · put <b>down</b> 放下／写下。建议把这 6 个短语抄在一张卡片上，每个配一个例句。</span>
+    </div>
+  </div>
+</div>
+
+<h2><span>二、针对性强化练习</span><span class="note">三级梯度：基础巩固 → 同类变式 → 中考衔接</span></h2>
+
+<h3>A. 固定搭配与连词 <span class="rate">本卷该考点 6 题，你错 1 题</span></h3>
+
+<div class="band"><span class="tier t1">★☆☆ 基础巩固</span><span>把错题的搭配先坐实，注意 to / with 的对比</span><span class="hint">建议 5 分钟</span></div>
+<div class="two">
+<ol class="ex">
+  <li><span class="en">Don't forget to connect the printer ____ the computer.</span> <span class="cue">(to / with)</span></li>
+  <li><span class="en">The Internet helps us connect ____ friends far away.</span> <span class="cue">(to / with)</span></li>
+  <li><span class="en">Please ____ your hand before you speak in class.</span> <span class="cue">(put up / put off)</span></li>
+  <li><span class="en">It rained hard, so the sports meeting was ____.</span> <span class="cue">(put off / put out)</span></li>
+  <li><span class="en">It's cold outside. ____ your coat, please.</span> <span class="cue">(Put on / Put up)</span></li>
+  <li><span class="en">The firemen came quickly and ____ the fire.</span> <span class="cue">(put out / put away)</span></li>
+</ol>
+</div>
+
+<div class="band"><span class="tier t2">★★☆ 同类变式</span><span>换语境、换设问方式，检验是否真的会用</span><span class="hint">建议 6 分钟</span></div>
+<div class="two">
+<ol class="ex" start="7">
+  <li><span class="en">—Why not ____ our English club? —Good idea!</span> <span class="cue">(join / join in)</span></li>
+  <li><span class="en">Kicking jianzi is the same ____ some common sports.</span> <span class="cue">(as / with)</span></li>
+  <li><span class="en">He didn't know the rule, ____ he asked me for help.</span> <span class="cue">(so / but)</span></li>
+  <li><span class="en">She is good at maths, ____ she isn't interested in it.</span> <span class="cue">(so / but)</span></li>
+  <li><span class="en">Kate is new here, ____ she has already made many friends.</span> <span class="cue">(and / but)</span></li>
+  <li><span class="en">用 connect…with 造句，说说一项让你结识新朋友的活动：</span><br><span class="cue" style="letter-spacing:.1em">____________________________________________</span></li>
+</ol>
+</div>
+
+<div class="band"><span class="tier t3">★★★ 中考衔接</span><span>上海中考「词汇与语法」单选题型，同考点、更高阶</span><span class="hint">建议 6 分钟</span></div>
+<div class="two">
+<ol class="ex" start="13">
+  <li><span class="en">The old man lives alone, ____ he never feels lonely.</span> <span class="cue">A. so &nbsp;B. but &nbsp;C. or &nbsp;D. for</span> <span class="src">中考题型</span></li>
+  <li><span class="en">The concert had to be ____ till next Friday because of the typhoon.</span> <span class="cue">A. put up &nbsp;B. put on &nbsp;C. put off &nbsp;D. put out</span> <span class="src">中考题型</span></li>
+  <li><span class="en">Volunteers often ____ with the local children to help them with their studies.</span> <span class="cue">A. connect &nbsp;B. join &nbsp;C. take &nbsp;D. put</span> <span class="src">中考题型</span></li>
+  <li><span class="en">____ he is only twelve, he can look after himself quite well.</span> <span class="cue">A. Because &nbsp;B. Although &nbsp;C. So &nbsp;D. If</span> <span class="src">中考题型</span></li>
+</ol>
+</div>
+
+<h3>B. 阅读理解 · 细节定位 / 主旨 / 短语辨析 <span class="rate">本卷该考点 4 题，你错 1 题</span></h3>
+
+<div class="band"><span class="tier t2">★★☆ 短文精练</span><span>先读题干划关键词，再回原文定位；主旨题看首尾句</span><span class="hint">建议 8 分钟</span></div>
+
+<div class="passage avoid">
+  <div class="ptitle"><span>Passage · 中考短文阅读题型（约 105 词）</span><span>Reading for detail &amp; main idea</span></div>
+  <div class="en">
+    Lin Xiao is a Grade 6 student in Shanghai. Last term her class started a “Green Corner” in the school library.
+    Every Friday afternoon the students bring old books and swap them with each other. “Now I can read twenty more books
+    a year, and it costs nothing,” Lin Xiao says.<br>
+    At first only eight students joined in. Their teacher, Mr Zhou, put up a poster near the school gate, and soon more
+    than sixty students came. Some parents worried that the old books were dirty, so the students clean every book before
+    they put it on the shelf. “The Green Corner does not only save money,” Mr Zhou says. “It connects children with each
+    other, and it teaches them to care for things.”
+  </div>
+</div>
+<div class="two" style="margin-top:4px">
+<ol class="ex" start="17">
+  <li><span class="en">Where did the students start the “Green Corner”?</span> <span class="cue">（细节定位：回原文找地点）</span></li>
+  <li><span class="en">Why did more students join later?</span> <span class="cue">（细节定位：找因果连接词）</span></li>
+  <li><span class="en">What does the underlined word “swap” mean?</span> <span class="cue">A. buy &nbsp;B. exchange &nbsp;C. borrow &nbsp;D. sell</span></li>
+  <li><span class="en">The best title for the passage is ____.</span> <span class="cue">A. A Busy Friday Afternoon &nbsp;B. Mr Zhou's Poster &nbsp;C. Books That Connect Us &nbsp;D. How to Clean Old Books</span></li>
+</ol>
+</div>
+
+<h2><span>三、主观题订正</span><span class="note">仅列出你本卷失分的题目 · 共失 13.5 分</span></h2>
+<div class="two">
+<ol class="ex">
+  <li><b>46.</b> <span class="en">What is your new school life like?</span> <span class="cue">你漏写 like。<b>What … like</b> 才是问「怎么样」；只写 What is your new school life 意思不完整。</span></li>
+  <li><b>50.</b> <span class="en">…you heard from Wang Yiming</span> <span class="cue">你用了 hear。全句为过去时（Have you heard…／Did you hear…），<b>时态要与前句一致</b>：receive a letter from = hear from。</span></li>
+  <li><b>68.</b> <span class="en">She collected 725 kilograms of bottle caps.</span> <span class="cue">你只写了 725 kilograms。简答题<b>要答完整句</b>，主语 + 谓语 + 数据，缺一项即扣分。</span></li>
+  <li><b>70.</b> <span class="en">She will keep making benches to warm lonely hearts and bring people closer.</span> <span class="cue">开放题也要「观点 + 一句理由」，你只写了观点。</span></li>
+</ol>
+</div>
+
+<div class="footrow">
+  <div>
+    <h2 class="sub2"><span>四、参考答案</span><span class="note">先做完再对照</span></h2>
+    <div class="ans avoid">
+      <div class="grp"><b>基础巩固：</b>1. to（设备连接）&nbsp; 2. with（人际联系）&nbsp; 3. put up&nbsp; 4. put off&nbsp; 5. Put on&nbsp; 6. put out</div>
+      <div class="grp"><b>同类变式：</b>7. join（加入组织用 join，加入活动用 join in）&nbsp; 8. as（the same as）&nbsp; 9. so（前因后果）&nbsp; 10. but&nbsp; 11. but&nbsp; 12. 参考：<span class="en">Playing basketball connects me with new friends.</span></div>
+      <div class="grp"><b>中考衔接：</b>13. B&nbsp; 14. C&nbsp; 15. A&nbsp; 16. B　<span class="why">（15 题：空后是 with，四个选项中只有 connect 能与 with 构成「与……建立联系」，正是第 30 题的同一考点。16 题：前后为让步关系，用 Although。）</span></div>
+      <div class="grp"><b>短文精练：</b>17. <span class="en">In the school library.</span>&nbsp; 18. <span class="en">Because Mr Zhou put up a poster near the school gate.</span>&nbsp; 19. B&nbsp; 20. C　<span class="why">（20 题：首段点出交换图书，末段 Mr Zhou 说 "It connects children with each other"，首尾呼应即主旨。）</span></div>
+    </div>
+  </div>
+  <div>
+    <h2 class="sub2"><span>五、本周任务</span><span class="note">约 45 分钟</span></h2>
+    <div class="tasks">
+      <div class="task"><span class="box"></span><b>周一 · 对比卡片</b><div class="d">connect to / with 与 put 家族 6 个短语各配 1 个例句，抄成 1 张卡片</div></div>
+      <div class="task"><span class="box"></span><b>周三 · 完成练习</b><div class="d">第二部分 1–16 题，先基础与变式，再中考衔接，做完再对答案</div></div>
+      <div class="task"><span class="box"></span><b>周五 · 简答句式</b><div class="d">照第三部分把 4 道主观题各重写一遍，每句检查主语与时态</div></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>错题依据老师卷面批改（错处「斜划」标记）自动定位并统计；主观题请以老师批注为准。班级错误率基于本班 22 份卷面实时计算。</span>
+  <span style="white-space:nowrap">浦绎心 · E26S-020</span>
+</footer>
+
+</body>
+</html>
