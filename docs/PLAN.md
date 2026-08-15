@@ -1,6 +1,8 @@
-# 试卷分析助手 · Exam Insight
+# 砺知 · Lì Zhī
 
-**Build plan v1 — 2026-08-15**
+**Build plan v3 — 2026-08-15**
+
+多学科试卷分析 · 语文 / 数学 / 英语
 
 A teacher uploads an exam paper and a list of who missed what. The app returns four
 finished documents: a per-student diagnostic PDF, a class-wide analysis PDF, a
@@ -11,13 +13,19 @@ WeChat-ready parent message per student, and an annotated answer key.
 ## 1. The product in one screen
 
 ```
-  ┌─ 1 UPLOAD ──┐  ┌─ 2 REVIEW ──┐  ┌─ 3 SCORES ──┐  ┌─ 4 ANALYZE ─┐  ┌─ 5 EXPORT ──┐
-  │ photo / PDF │→ │ questions + │→ │ paste names │→ │ error       │→ │ 4 documents │
-  │ paste text  │  │ answers +   │  │ + wrong Q#  │  │ distribution│  │ + .zip      │
-  │ manual form │  │ categories  │  │             │  │ + practice  │  │             │
-  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
-        AI                YOU              YOU              AI              AI
+ ┌ 1 上传试卷原卷 ┐ ┌ 2 上传答案 ─┐ ┌ 3 录入错题号 ┐ ┌ 4 班级分析 ─┐ ┌ 5 导出文档 ─┐
+ │ 拍照 / PDF     │→│ 答案文件    │→│ 姓名 + 错题号│→│ 错误率分布  │→│ 四类文档    │
+ │ 粘贴文本       │ │ 粘贴答案    │ │ 可加所选选项 │ │ 知识点归一  │ │ + .zip      │
+ │ 手动录入       │ │ 模型拟答案  │ │              │ │ 练习生成    │ │             │
+ └────────────────┘ └─────────────┘ └──────────────┘ └─────────────┘ └─────────────┘
+        AI               AI + 你          你              本地计算          AI
 ```
+
+**Paper and answer key are uploaded separately.** They arrive at different times in
+real life — the key is often a separate handout, or doesn't exist yet — and pairing
+them as an explicit step is where the confirmation gate belongs. Step 2 is also where
+question review lives: once the key is paired, the merged 题目 + 答案 + 知识点 table
+is the thing you confirm, in one pass rather than two.
 
 Every AI step lands in an editable table before it becomes a PDF. The teacher is
 always the last edit, never the AI.
@@ -58,6 +66,7 @@ Browser (Next.js client)                     Vercel Edge/Node functions
 | State | Zustand + IndexedDB (`idb-keyval`) | One session object, survives refresh, no backend needed |
 | AI | Google Gemini via `@google/genai` | Vision for photographed papers, structured JSON output for everything else |
 | PDF | `@react-pdf/renderer`, client-side | Real vector PDFs, full layout control, no headless Chrome on Vercel |
+| Maths | KaTeX → PDF primitives | Typeset formulas rather than pasted screenshots; see §6.5 |
 | Charts | Hand-rolled SVG inside react-pdf | Chart libraries don't render into PDF primitives; bar/heatmap are simple enough |
 | Zip | `client-zip` | Bundle 40 student PDFs + 40 `.txt` files into one download |
 
@@ -177,7 +186,7 @@ Each question also carries a skill tag (`计算 Computation`, `概念理解
 Conceptual`, `应用 Application`, `审题 Reading the problem`).
 
 Gemini proposes the taxonomy from the paper itself, then you edit it in Step 2.
-Saved taxonomies are reusable — by your third exam in a subject you'll mostly be
+Taxonomies are saved **per subject** — 语文, 数学 and 英语 never share one — and reused — by your third exam in a subject you'll mostly be
 confirming, not authoring. That reuse is also what makes cross-exam comparison
 possible later.
 
@@ -329,6 +338,53 @@ as your post-exam review script.
 
 ---
 
+## 6.5 Three subjects, one engine — 语文 / 数学 / 英语
+
+The app is not English-only. Each subject plugs in a **subject pack**; everything
+downstream — analysis, charts, practice, the four documents — is subject-agnostic
+and reads from that pack.
+
+```ts
+type SubjectPack = {
+  key: 'chinese' | 'math' | 'english'
+  taxonomy: Category[]              // 知识点体系, saved and reused per subject
+  questionTypes: string[]           // 选择/填空/计算/解答/默写/作文 …
+  answerCheck?: (q, a) => boolean   // programmatic verification where possible
+  render: { math?: 'latex'; figures?: boolean }
+}
+```
+
+### What actually differs per subject
+
+| | 语文 | 数学 | 英语 |
+|---|---|---|---|
+| **Taxonomy** | 字词与拼音 · 病句与标点 · 古诗文默写 · 文言文阅读 · 现代文（信息提取／赏析）· 习作 | 分数四则运算 · 比与比例 · 圆的周长与面积 · 百分数应用 · 位置与方向 · 解决问题 | 固定搭配与连词 · 短语辨析 · 时态与语态 · 阅读（细节／主旨）· 词汇语法 · 书面表达 |
+| **Hardest input** | 手写批注、主观题扣分点 | **公式与图形** | 手写作答 |
+| **Parsing need** | 竖排／古文标点 | 公式转 **LaTeX**，几何图裁切保留 | 常规 OCR |
+| **Answer checking** | 人工为主，默写可比对 | **数值可程序复核** | 客观题可比对 |
+| **Subjective share** | 最高（习作 40 分） | 中（解答题过程分） | 低 |
+
+### The three that matter most
+
+**数学 needs formula rendering, and it's not optional.** A screenshot of a formula
+pasted into a PDF looks terrible next to typeset text and can't be re-flowed.
+Questions get converted to **LaTeX** at parse time and typeset on output; geometry
+figures are kept as cropped images from the original paper.
+
+**数学 also gets programmatic answer verification.** Where a question has a numeric
+answer, the model's proposed answer is recomputed and checked. If it doesn't
+reconcile, the row is flagged before you ever see it. This is the strongest
+hallucination guard in the product and it exists only for maths — worth building
+precisely because that's the subject where a wrong answer key is most damaging.
+
+**语文 needs a different scoring model entirely.** A large share of the marks are
+subjective — 赏析, 概括, 习作 — with no single right answer. The app does **not**
+attempt to grade these. It takes the deduction points you recorded, files them by
+knowledge point, and reports the class-wide pattern. Only 默写 and 字词 get
+per-question error rates. Pretending otherwise would produce confident nonsense.
+
+---
+
 ## 7. The past-paper bank — 上海中考 / 高考真题
 
 This is the largest content upgrade available to the product, and it changes the
@@ -444,7 +500,7 @@ Each phase ends with something deployed and usable. Nothing is a big-bang.
 |-------|-------|-----------|
 | **0 · Foundation** | Move ISKANDER to `/legacy-game`, scaffold Next.js at repo root, design system, Vercel deploy, env-var wiring, health-check on `/api/ping` | A live URL with the shell UI and a verified Gemini connection |
 | **1 · Ingestion** | Three input modes, upload pipeline, vision parsing, review/edit table with confidence flags | You can upload a real paper and see it correctly parsed |
-| **2 · Categorize + score** | Taxonomy generation and editing, roster parser with live preview, deterministic analysis engine + unit tests | Real numbers on screen for a real class — already useful with zero PDFs |
+| **2 · Categorize + score** | Per-subject taxonomy packs, roster parser with live preview, deterministic analysis engine + unit tests, maths LaTeX + numeric verification | Real numbers on screen for a real class — already useful with zero PDFs |
 | **3 · PDF engine** | react-pdf setup, CJK font pipeline, shared document chrome, **Answer key PDF** + **Class analysis PDF** with charts | Two of four documents shipping |
 | **4 · Practice** | Practice-bank generation, three-tier difficulty ladder, distractor analysis, teacher review screen, **Per-student PDF**, zip export | Three of four |
 | **5 · Past-paper bank** | Ingest your 中考/高考 papers through the Phase 1 parser, auto-tag, dedupe, `gradeFloor` gating, provenance stamping, retrieval into tier 3 | Practice items become real past-paper questions with citations |
@@ -472,6 +528,8 @@ once the document design settled.
 | **Hallucinated practice questions or explanations.** | Nothing reaches a PDF without passing through a teacher review screen. For maths, we ask for worked solutions and verify numeric answers programmatically where the form allows. |
 | **API cost drift.** | Per-session token accounting displayed in the UI, and a configurable per-session ceiling. Rough estimate: a 30-question paper for a 40-student class should land in the low tens of US cents. I'll measure and report real numbers at the end of Phase 4 rather than promising them now. |
 | **Mis-tagged bank items.** A past-paper question filed under the wrong category surfaces as irrelevant practice. | Tagging is reviewed once at ingestion, in bulk, with the same confidence flags as exam parsing — and a wrong tag is fixable in one click forever after, unlike a bad AI-generated question that regenerates differently each run. |
+| **Maths formula OCR.** Handwritten fractions, radicals and geometry are the hardest input in the product. | LaTeX round-trip shown back to you in the review table, numeric verification on every answer that has one, and the manual builder as the escape hatch. Expect this to need the most Phase 1 tuning of the three subjects. |
+| **语文 subjective grading.** No model should be assigning marks to a 习作. | The app never grades subjective work. It files the deductions *you* recorded by knowledge point and reports the class pattern. Scope limit, not a mitigation. |
 | **Gemini rate limits.** | Exponential backoff, request queueing, partial-result recovery so a rate limit late in a batch doesn't discard the work already done. |
 | **The paper arrives with no answer key.** | Answers drafted and marked `unverified`; the answer-key PDF is gated until you confirm them. |
 
@@ -497,6 +555,7 @@ once the document design settled.
 - A Gemini API key (from Google AI Studio) — added to Vercel as `GEMINI_API_KEY`.
   Set it in the Vercel dashboard, **not** in a file in this repo.
 - Confirmation that moving ISKANDER to `/legacy-game` is fine.
+- Which subject you want Phase 1 built against first. I would start with **语文 or 英语** and add 数学 in Phase 2 — the formula pipeline is the single largest unknown, and it is much cheaper to build once the rest of the flow is proven.
 - Ideally: one real exam paper (photo or PDF) and one real wrong-answer list,
   anonymized if you prefer. Phase 1 is much better work with a real artifact than
   with a synthetic one.

@@ -1,4 +1,4 @@
-<title>Exam Insight Build Plan</title>
+<title>砺知产品规划</title>
 <style>
   /* ---- tokens: light is the base ---- */
   :root {
@@ -402,9 +402,9 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="eyebrow">Build plan · v2</p>
-    <h1>试卷分析助手</h1>
-    <p class="subtitle">Exam Insight</p>
+    <p class="eyebrow">Build plan · v3</p>
+    <h1>砺知</h1>
+    <p class="subtitle">Lì Zhī · 多学科试卷分析</p>
     <p class="standfirst">
       A teacher uploads an exam paper and a list of who missed what. The app returns four
       finished documents — a per-student diagnostic, a class-wide analysis, a WeChat-ready
@@ -414,7 +414,7 @@
       <span><b>Repo</b> kudraet7-cmyk/assestsss</span>
       <span><b>Branch</b> claude/teacher-exam-analysis-app-lglghd</span>
       <span><b>Date</b> 2026-08-15</span>
-      <span><b>Status</b> v2 · sample report built</span>
+      <span><b>Status</b> v3 · 语文 / 数学 / 英语</span>
     </div>
   </header>
 
@@ -424,36 +424,42 @@
     <div class="pipeline">
       <div class="stage">
         <span class="k">Step 1</span>
-        <span class="t">Upload</span>
-        <span class="d">Photo, PDF, pasted text, or typed by hand.</span>
+        <span class="t">上传试卷原卷</span>
+        <span class="d">拍照、PDF、粘贴文本或手动录入。</span>
         <span class="who ai">AI</span>
       </div>
       <div class="stage">
         <span class="k">Step 2</span>
-        <span class="t">Review</span>
-        <span class="d">Questions, answers and categories — yours to correct.</span>
-        <span class="who you">YOU</span>
+        <span class="t">上传答案</span>
+        <span class="d">答案文件、粘贴答案，或让模型拟一份。配对后逐题确认。</span>
+        <span class="who ai">AI + 你</span>
       </div>
       <div class="stage">
         <span class="k">Step 3</span>
-        <span class="t">Scores</span>
-        <span class="d">Paste names and the question numbers each missed.</span>
-        <span class="who you">YOU</span>
+        <span class="t">录入错题号</span>
+        <span class="d">姓名加错题号，可选择再加上他选的选项。</span>
+        <span class="who you">你</span>
       </div>
       <div class="stage">
         <span class="k">Step 4</span>
-        <span class="t">Analyze</span>
-        <span class="d">Error distribution, weak categories, practice bank.</span>
-        <span class="who ai">AI</span>
+        <span class="t">班级分析</span>
+        <span class="d">错误率分布、知识点归一、练习生成。</span>
+        <span class="who you">本地计算</span>
       </div>
       <div class="stage">
         <span class="k">Step 5</span>
-        <span class="t">Export</span>
-        <span class="d">Four documents, individually or as one zip.</span>
+        <span class="t">导出文档</span>
+        <span class="d">四类文档，单份或打包 .zip。</span>
         <span class="who ai">AI</span>
       </div>
     </div>
 
+    <p>
+      <strong>Paper and answer key are uploaded separately</strong> — they arrive at different times
+      in real life, and pairing them is where the confirmation gate belongs. Step 2 is also where
+      question review lives: once the key is paired, the merged 题目 + 答案 + 知识点 table is what you
+      confirm, in one pass rather than two.
+    </p>
     <p>
       Every AI step lands in an editable table before it becomes a PDF.
       <strong>The teacher is always the last edit, never the AI.</strong>
@@ -759,7 +765,68 @@
   </section>
 
   <section>
-    <h2><span class="num">07</span> The past-paper bank</h2>
+    <h2><span class="num">07</span> Three subjects, one engine</h2>
+
+    <p>
+      砺知 is not English-only. Each subject plugs in a <strong>subject pack</strong> — its taxonomy,
+      its question types, its parsing needs — and everything downstream is subject-agnostic, reading
+      from that pack. The demo switches between 语文, 数学 and 英语 live.
+    </p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th></th><th>语文</th><th>数学</th><th>英语</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="tight">最难的输入</td><td>手写批注、主观题扣分点</td><td><strong>公式与图形</strong></td><td>手写作答</td></tr>
+          <tr><td class="tight">解析需求</td><td>竖排 / 古文标点</td><td>公式转 <strong>LaTeX</strong>，几何图裁切</td><td>常规 OCR</td></tr>
+          <tr><td class="tight">答案校验</td><td>人工为主，默写可比对</td><td><strong>数值可程序复核</strong></td><td>客观题可比对</td></tr>
+          <tr><td class="tight">主观题占比</td><td>最高（习作 40 分）</td><td>中（解答过程分）</td><td>低</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The three differences that matter</h3>
+
+    <div class="callout">
+      <h3>数学 needs real formula typesetting</h3>
+      <p>
+        A screenshot of a formula pasted into a PDF looks wrong next to typeset text and can't
+        reflow. Questions are converted to <strong>LaTeX</strong> at parse time and typeset on
+        output; geometry figures are kept as cropped images from the original paper.
+      </p>
+    </div>
+
+    <div class="callout">
+      <h3>数学 also gets programmatic answer verification</h3>
+      <p>
+        Where a question has a numeric answer, the model's proposed answer is recomputed and
+        checked. If it doesn't reconcile, the row is flagged before you ever see it — visible in the
+        demo as <code>数值复核不符 · 1 题</code> on the answer-key step.
+      </p>
+      <p>
+        This is the strongest hallucination guard in the product, and it exists only for maths. Worth
+        building precisely because maths is where a wrong answer key does the most damage.
+      </p>
+    </div>
+
+    <div class="callout warn">
+      <h3>语文 needs a different scoring model — and a scope limit</h3>
+      <p>
+        A large share of 语文 marks are subjective: 赏析, 概括, 习作. There is no single right answer,
+        and <strong>the app does not attempt to grade them.</strong> It takes the deduction points
+        <em>you</em> recorded, files them by knowledge point, and reports the class-wide pattern.
+      </p>
+      <p>
+        Only 默写 and 字词 get per-question error rates. Pretending a model can mark a 习作 would
+        produce confident nonsense on the one document a parent reads most closely.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span> The past-paper bank</h2>
 
     <p>
       This is the largest content upgrade available to the product, and it changes the AI's job from
@@ -829,7 +896,7 @@
   </section>
 
   <section>
-    <h2><span class="num">08</span> Visual design</h2>
+    <h2><span class="num">09</span> Visual design</h2>
 
     <p>
       Futuristic, but you'll be using it at 10pm on a Sunday — so: clean, high-contrast, quiet.
@@ -865,7 +932,7 @@
   </section>
 
   <section>
-    <h2><span class="num">09</span> Phases</h2>
+    <h2><span class="num">10</span> Phases</h2>
 
     <p>Each phase ends with something deployed and usable. Nothing here is a big-bang.</p>
 
@@ -882,12 +949,12 @@
           </tr>
           <tr>
             <td class="tight"><span class="phase-id">1</span> Ingestion</td>
-            <td>Three input modes, upload pipeline, vision parsing, review table with confidence flags</td>
-            <td>You can upload a real paper and see it correctly parsed</td>
+            <td>Paper upload and answer-key upload as separate steps, pairing, vision parsing, confirmation table with confidence flags</td>
+            <td>You can upload a real paper + key and see them correctly paired</td>
           </tr>
           <tr>
             <td class="tight"><span class="phase-id">2</span> Categorize</td>
-            <td>Taxonomy generation and editing, roster parser with live preview, deterministic analysis engine and its tests</td>
+            <td>Per-subject taxonomy packs, roster parser with live preview, deterministic analysis engine and its tests, maths LaTeX + numeric verification</td>
             <td>Real numbers for a real class — useful already, with zero PDFs</td>
           </tr>
           <tr>
@@ -932,7 +999,7 @@
   </section>
 
   <section>
-    <h2><span class="num">10</span> Risks, and what we do about them</h2>
+    <h2><span class="num">11</span> Risks, and what we do about them</h2>
 
     <div class="scroller">
       <table>
@@ -943,6 +1010,10 @@
           <tr>
             <td>CJK fonts in PDFs — Chinese needs an embedded font, and the full Noto Sans SC is ~10MB</td>
             <td>Pre-subset to GB2312 plus Latin at build time (~3MB), served once and cached; react-pdf subsets again per document so the PDFs stay small. Budgeted as real Phase 3 work, not an afterthought.</td>
+          </tr>
+          <tr>
+            <td><strong>Maths formula OCR</strong> — handwritten fractions, radicals and geometry are the hardest input in the product</td>
+            <td>LaTeX round-trip shown back to you in the review table, numeric verification on every answer that has one, manual builder as the escape hatch. Expect this to need the most Phase 1 tuning of the three subjects.</td>
           </tr>
           <tr>
             <td>OCR accuracy on phone photos, especially handwriting and maths notation</td>
@@ -970,7 +1041,7 @@
   </section>
 
   <section>
-    <h2><span class="num">11</span> Open questions</h2>
+    <h2><span class="num">12</span> Open questions</h2>
     <p>None of these block Phase 0. All are worth answering by Phase 2.</p>
     <ol>
       <li><strong>Subject and grade.</strong> Taxonomy quality depends on it, and one sample paper from you is worth more than any amount of guessing.</li>
@@ -981,9 +1052,10 @@
   </section>
 
   <section>
-    <h2><span class="num">12</span> To start Phase 0</h2>
+    <h2><span class="num">13</span> To start Phase 0</h2>
     <ul class="plain">
       <li>A Gemini API key from Google AI Studio, added in the Vercel dashboard as <code>GEMINI_API_KEY</code> — not in a file in this repo.</li>
+      <li><strong>Which subject to build Phase 1 against first.</strong> I'd start with 语文 or 英语 and add 数学 in Phase 2 — the formula pipeline is the largest unknown, and it's much cheaper to build once the rest of the flow is proven.</li>
       <li>Confirmation that moving ISKANDER to <code>/legacy-game</code> is fine.</li>
       <li>Ideally one real exam paper and one real wrong-answer list, anonymized if you prefer. Phase 1 is far better work with a real artifact than a synthetic one.</li>
       <li>For Phase 5, whatever 上海中考 / 高考 past papers you already have, in any format. Quantity matters more than tidiness — the parser handles the mess.</li>
@@ -991,7 +1063,7 @@
   </section>
 
   <footer>
-    试卷分析助手 · Exam Insight — build plan v1 · docs/PLAN.md
+    砺知 Lì Zhī — build plan v3 · docs/PLAN.md
   </footer>
 
 </div>

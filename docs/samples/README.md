@@ -25,8 +25,14 @@ production font path — this sample uses the container's WenQuanYi Zen Hei).
 
 ## `ui-demo.html`
 
-A clickable mockup of the app: all five wizard steps, a working dark/light toggle,
-and a class-analysis dashboard with hover tooltips. Open it in a browser.
+A clickable mockup of 砺知: the five workflow steps (上传试卷原卷 → 上传答案 →
+录入错题号 → 班级分析 → 导出文档), a **subject switcher** for 语文 / 数学 / 英语,
+a working dark/light toggle, and hover tooltips on every chart.
+
+Each subject is a full pack — its own taxonomy, question types, sample rows, score
+distribution, teaching advice and parent message. Switching subject rebuilds the whole
+dataset, so the maths view really is maths (LaTeX-set formulas, a numeric-recheck
+step) and the 语文 view really is 语文 (subjective-heavy, no per-question rate on 习作).
 
 The dashboard runs on generated data for 22 students, but the generator is a real
 model — per-student difficulty multipliers normalised to mean 1 — so the KPI tiles,

@@ -1,7 +1,7 @@
-<title>Exam Insight Console</title>
+<title>砺知控制台</title>
 <style>
   /* ══════════════════════════════════════════════════════════
-     Exam Insight — interactive UI demo
+     砺知 — interactive UI demo
      Product chrome: cyan→violet accent.
      Chart marks: a separate validated blue ramp (see PLAN.md §8) —
      never the accent, so data never competes with UI.
@@ -396,6 +396,33 @@
     .grid2, .grid3, .docs { grid-template-columns: 1fr; }
     .main { max-height: none; }
   }
+
+  /* ── subject switcher ──────────────────────── */
+  .subs { display: flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--panel); }
+  .subs button {
+    border: 0; background: none; cursor: pointer; color: var(--tx-3); font: inherit;
+    font-size: 12px; padding: 4px 13px; border-radius: 999px; transition: .15s;
+  }
+  .subs button:hover { color: var(--tx-2); }
+  .subs button[aria-pressed="true"] { background: var(--grad); color: #06121A; font-weight: 620; }
+  .app[data-app-theme="light"] .subs button[aria-pressed="true"] { color: #fff; }
+
+  .ansmode { display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
+  .opt {
+    display: flex; gap: 11px; align-items: flex-start; padding: 11px 13px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); cursor: pointer;
+  }
+  .opt[data-sel="1"] { border-color: color-mix(in srgb, var(--cyan) 55%, transparent); background: color-mix(in srgb, var(--cyan) 7%, transparent); }
+  .opt .rd {
+    width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2);
+    flex: 0 0 auto; margin-top: 2px; display: grid; place-items: center;
+  }
+  .opt[data-sel="1"] .rd { border-color: var(--cyan); }
+  .opt[data-sel="1"] .rd::after { content:""; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); }
+  .opt .t { font-size: 13px; font-weight: 550; }
+  .opt .h { font-size: 11.5px; color: var(--tx-3); margin-top: 2px; line-height: 1.5; }
+
+  .mathy { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
 </style>
 
 <div class="app" id="app">
@@ -406,20 +433,25 @@
     <div class="brand">
       <span class="glyph">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-          <path d="M2 12.5 L5.6 7 L8.6 9.6 L14 2.6" stroke="#06121A" stroke-width="1.8"
-                stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="5.6" cy="7" r="1.5" fill="#06121A"/>
+          <path d="M2.5 13 L13 3" stroke="#06121A" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M2.5 13 L6.6 12.2 L13 3 L10.4 2.2 Z" fill="#06121A" opacity=".45"/>
+          <circle cx="11.7" cy="4.3" r="1.35" fill="#06121A"/>
         </svg>
       </span>
       <span>
-        <div class="nm">试卷分析助手</div>
-        <div class="en">Exam Insight</div>
+        <div class="nm">砺知</div>
+        <div class="en">Lì Zhī</div>
       </span>
     </div>
-    <div class="sess">2026 暑 预初卓越英语 · <b>六年级上 Starter &amp; U1 阶段测试</b> · 22 份卷面</div>
+    <div class="sess" id="sessLine"></div>
     <div class="right">
+      <div class="subs" role="group" aria-label="学科">
+        <button data-sub="chinese" aria-pressed="false">语文</button>
+        <button data-sub="math"    aria-pressed="false">数学</button>
+        <button data-sub="english" aria-pressed="true">英语</button>
+      </div>
       <div class="meter" title="本次会话的 API 用量">
-        <span>用量</span><span class="bar"><i></i></span><span>¥0.38</span>
+        <span>用量</span><span class="bar"><i></i></span><span id="cost">¥0.38</span>
       </div>
       <div class="tgl" role="group" aria-label="主题">
         <button id="tDark"  aria-pressed="true">Dark</button>
@@ -432,9 +464,9 @@
   <nav class="rail" aria-label="流程">
     <div class="cap">流程 / workflow</div>
     <div class="steps" id="steps">
-      <button class="step done" data-s="0"><span class="dot">1</span><span class="lb">上传试卷<small>Upload</small></span></button>
-      <button class="step done" data-s="1"><span class="dot">2</span><span class="lb">核对题目<small>Review</small></span></button>
-      <button class="step done" data-s="2"><span class="dot">3</span><span class="lb">录入错题<small>Scores</small></span></button>
+      <button class="step done" data-s="0"><span class="dot">1</span><span class="lb">上传试卷原卷<small>Paper</small></span></button>
+      <button class="step done" data-s="1"><span class="dot">2</span><span class="lb">上传答案<small>Answer key</small></span></button>
+      <button class="step done" data-s="2"><span class="dot">3</span><span class="lb">录入错题号<small>Wrong Q&nbsp;nos.</small></span></button>
       <button class="step on"   data-s="3"><span class="dot">4</span><span class="lb">班级分析<small>Analyze</small></span></button>
       <button class="step"      data-s="4"><span class="dot">5</span><span class="lb">导出文档<small>Export</small></span></button>
     </div>
@@ -452,14 +484,14 @@
   <!-- ═════ main ═════ -->
   <main class="main">
 
-    <!-- ───────── 1 · UPLOAD ───────── -->
+    <!-- ───────── 1 · 上传试卷原卷 ───────── -->
     <section class="pane" data-p="0">
       <div class="head">
         <div>
-          <h1>上传试卷</h1>
-          <div class="sub">拍照、PDF、粘贴文本或手动录入 —— 四条路径最后都汇入同一张核对表</div>
+          <h1>上传试卷原卷</h1>
+          <div class="sub">先只上传空白卷或学生卷面 —— 答案下一步再传，两者分开更不容易传错</div>
         </div>
-        <div class="act"><button class="btn pri">开始解析 →</button></div>
+        <div class="act"><button class="btn pri">解析原卷 →</button></div>
       </div>
 
       <div class="grid2">
@@ -478,73 +510,81 @@
                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
-            <div class="t">把试卷拖到这里</div>
+            <div class="t">把试卷原卷拖到这里</div>
             <div class="h">支持 JPG / PNG / PDF · 可多页 · 手机直接拍也行</div>
           </div>
-          <div class="files">
-            <div class="file">
-              <span class="th">P1</span>
-              <span><span class="nm">试卷_第1页.jpg</span><br><span class="mt">2.4 MB · 已识别 34 题</span></span>
-              <span class="st done">✓ 完成</span>
-            </div>
-            <div class="file">
-              <span class="th">P2</span>
-              <span><span class="nm">试卷_第2页.jpg</span><br><span class="mt">2.1 MB · 已识别 36 题</span></span>
-              <span class="st done">✓ 完成</span>
-            </div>
-            <div class="file">
-              <span class="th">KEY</span>
-              <span><span class="nm">参考答案.pdf</span><br><span class="mt">180 KB · 正在比对</span></span>
-              <span class="st run"><span class="prog"><i style="width:64%"></i></span>64%</span>
-            </div>
-          </div>
+          <div class="files" id="paperFiles"></div>
         </div>
 
         <div class="stack">
           <div class="card">
             <div class="ct">试卷信息 <span class="r">自动识别，可改</span></div>
-            <table>
-              <tbody>
-                <tr><td style="width:82px">学科</td><td class="q">英语</td></tr>
-                <tr><td>年级</td><td class="q">六年级上（预初）</td></tr>
-                <tr><td>题量</td><td class="q">70 题 · 客观 61 / 主观 9</td></tr>
-                <tr><td>总分</td><td class="q">100 分</td></tr>
-                <tr><td>答案</td><td class="q"><span class="pill g">✓ 随卷提供</span></td></tr>
-              </tbody>
-            </table>
+            <table><tbody id="metaRows"></tbody></table>
           </div>
-          <div class="card">
-            <div class="ct">如果试卷没带答案</div>
-            <p style="margin:0;font-size:12.5px;color:var(--tx-2);line-height:1.65">
-              模型会先拟出答案并标记为 <span class="pill w">待核对</span>。
-              在你逐题确认之前，<b style="color:var(--tx)">答案解析 PDF 不允许导出</b> —— 一份错的答案发给
-              40 个家庭，是这个产品最坏的失败方式，所以这里是硬性拦截，不是提示条。
-            </p>
-          </div>
+          <div class="card" id="subjNote"></div>
         </div>
       </div>
     </section>
 
-    <!-- ───────── 2 · REVIEW ───────── -->
+    <!-- ───────── 2 · 上传答案 ───────── -->
     <section class="pane" data-p="1">
       <div class="head">
         <div>
-          <h1>核对题目</h1>
-          <div class="sub">70 题已识别 · <span style="color:var(--warn)">3 题置信度偏低，已标黄</span> —— 只需看这 3 行，不必逐题检查</div>
+          <h1>上传答案</h1>
+          <div class="sub" id="ansSub"></div>
         </div>
         <div class="act">
           <button class="btn">全部展开</button>
-          <button class="btn pri">确认无误 →</button>
+          <button class="btn pri">确认答案 →</button>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="ct">答案来源 <span class="r">三选一</span></div>
+          <div class="ansmode">
+            <div class="opt" data-sel="1">
+              <span class="rd"></span>
+              <span>
+                <span class="t">上传答案文件</span>
+                <span class="h">标准答案、评分标准或答题卡。与原卷逐题比对后自动配对。</span>
+              </span>
+            </div>
+            <div class="opt">
+              <span class="rd"></span>
+              <span>
+                <span class="t">粘贴答案</span>
+                <span class="h">如 <code style="font-family:var(--mono)">1.B 2.C 3.A …</code>，主观题可留空。</span>
+              </span>
+            </div>
+            <div class="opt">
+              <span class="rd"></span>
+              <span>
+                <span class="t">让模型拟答案</span>
+                <span class="h">没有答案时用。全部标为「待核对」，逐题确认前不允许导出答案解析。</span>
+              </span>
+            </div>
+          </div>
+          <div class="files" id="keyFiles" style="margin-top:14px"></div>
+        </div>
+
+        <div class="card">
+          <div class="ct">配对结果 <span class="r" id="pairR"></span></div>
+          <table><tbody id="pairRows"></tbody></table>
+          <div class="note">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span><b style="color:var(--tx-2)">答案解析 PDF 在所有「待核对」清零前不允许导出。</b>一份错的答案发给 40 个家庭，是这个产品最坏的失败方式，所以这里是硬性拦截，不是提示条。</span>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <div class="ct">题目与知识点 <span class="r">知识点由模型提议，点击标签可改</span></div>
+        <div class="ct">题目与答案核对 <span class="r">知识点由模型提议，点击标签可改</span></div>
         <div class="tw">
           <table>
             <thead><tr>
-              <th style="width:52px">题号</th><th>题干</th><th style="width:64px">类型</th>
-              <th style="width:78px">正确答案</th><th style="width:210px">知识点</th><th style="width:104px">置信度</th>
+              <th style="width:52px">题号</th><th>题干</th><th style="width:76px">类型</th>
+              <th style="width:112px">正确答案</th><th style="width:190px">知识点</th><th style="width:104px">置信度</th>
             </tr></thead>
             <tbody id="qrows"></tbody>
           </table>
@@ -553,15 +593,15 @@
 
       <div class="note">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <span>知识点体系按学科保存，下次同科目考试直接复用 —— 到第三份卷子，你基本只是在确认，不是在录入。</span>
+        <span>知识点体系按学科分别保存，下次同科目考试直接复用 —— 到第三份卷子，你基本只是在确认，不是在录入。</span>
       </div>
     </section>
 
-    <!-- ───────── 3 · SCORES ───────── -->
+    <!-- ───────── 3 · 录入错题号 ───────── -->
     <section class="pane" data-p="2">
       <div class="head">
         <div>
-          <h1>录入错题</h1>
+          <h1>录入错题号</h1>
           <div class="sub">一行一个学生。分隔符随便用 —— 中英文冒号、逗号、顿号、空格都认</div>
         </div>
         <div class="act">
@@ -572,18 +612,9 @@
 
       <div class="grid2">
         <div class="card">
-          <div class="ct">粘贴名单 <span class="r">可选：在题号后加上他选的选项</span></div>
-          <textarea class="ta" spellcheck="false" aria-label="名单">陈嘉禾: 30B,44,55,64
-李思远: 3,15,30B,44,62C,64,69
-浦绎心: 30B,62C
-张一鸣 7 9 21 30 33 44 55 62 64
-王梓涵：4、11、23、30、38、44、49、62、64、66、69、70
-刘可欣: 3-5,12,30,44,50,62,64,69
-孙悦: 30,44,50,55,62,64,69,71</textarea>
-          <div class="note" style="margin-top:11px">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <span><b style="color:var(--tx-2)">30B</b> 表示第 30 题他选了 B。多敲一个字母，报告就能写「你选的 to 为什么错」，而不只是「正确答案是 with」。完全可选。<b style="color:var(--tx-2)">3-5</b> 自动展开为 3、4、5；<b style="color:var(--tx-2)">无</b> / <b style="color:var(--tx-2)">满分</b> 记为零错题。</span>
-          </div>
+          <div class="ct">粘贴名单 <span class="r" id="pasteHint"></span></div>
+          <textarea class="ta" spellcheck="false" aria-label="名单" id="pasteBox"></textarea>
+          <div class="note" style="margin-top:11px" id="pasteNote"></div>
         </div>
 
         <div class="card">
@@ -598,7 +629,7 @@
       </div>
     </section>
 
-    <!-- ───────── 4 · ANALYZE ───────── -->
+    <!-- ───────── 4 · 班级分析 ───────── -->
     <section class="pane on" data-p="3">
       <div class="head">
         <div>
@@ -625,14 +656,14 @@
       </div>
 
       <div class="grid2" style="margin-top:14px">
-          <div class="card">
-            <div class="ct">错题数分布</div>
-            <div id="cD"></div>
-          </div>
-          <div class="card">
-            <div class="ct">教学建议 <span class="r">依据上方计算结果</span></div>
-            <div class="insight" id="insight"></div>
-          </div>
+        <div class="card">
+          <div class="ct">错题数分布</div>
+          <div id="cD"></div>
+        </div>
+        <div class="card">
+          <div class="ct">教学建议 <span class="r">依据上方计算结果</span></div>
+          <div class="insight" id="insight"></div>
+        </div>
       </div>
 
       <div class="card" style="margin-top:14px">
@@ -647,12 +678,12 @@
       </div>
     </section>
 
-    <!-- ───────── 5 · EXPORT ───────── -->
+    <!-- ───────── 5 · 导出文档 ───────── -->
     <section class="pane" data-p="4">
       <div class="head">
         <div>
           <h1>导出文档</h1>
-          <div class="sub">四类文档已就绪 · 共 47 个文件</div>
+          <div class="sub" id="exSub"></div>
         </div>
         <div class="act">
           <button class="btn">预览全部</button>
@@ -664,56 +695,11 @@
       </div>
 
       <div class="grid2">
-        <div class="docs" style="grid-template-columns:1fr;gap:14px">
-          <div class="doc">
-            <div class="top2">
-              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10h-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
-              <div>
-                <h3>个人诊断报告</h3>
-                <div class="meta">PDF × 22 · 每份 2 页</div>
-              </div>
-            </div>
-            <p>第 1 页诊断，第 2 页是可撕下的练习卷。含错因分析、干扰项讲解与三级梯度练习。</p>
-            <div class="row"><button class="btn">预览</button><button class="btn">下载全部</button></div>
-          </div>
-          <div class="doc">
-            <div class="top2">
-              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 13.5h12M4 13V8m3.5 5V4m3.5 9V6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-              <div>
-                <h3>班级分析报告</h3>
-                <div class="meta">PDF × 1 · 4 页</div>
-              </div>
-            </div>
-            <p>错误率分布、知识点归一化对比、学生 × 知识点热力图、分数直方图与教学重点。</p>
-            <div class="row"><button class="btn">预览</button><button class="btn">下载</button></div>
-          </div>
-          <div class="doc v">
-            <div class="top2">
-              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 4.5h12v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 5 8 9l5.5-4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
-              <div>
-                <h3>家长沟通话术</h3>
-                <div class="meta">TXT × 22 · 微信可直接粘贴</div>
-              </div>
-            </div>
-            <p>150–250 字，无术语。语气可调（温和 / 中性 / 直接），可加署名。</p>
-            <div class="row"><button class="btn">预览</button><button class="btn">下载全部</button></div>
-          </div>
-          <div class="doc v">
-            <div class="top2">
-              <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h10v11H3z" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 6.5l1.5 1.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
-              <div>
-                <h3>答案解析</h3>
-                <div class="meta">PDF × 1 · 含班级错误率</div>
-              </div>
-            </div>
-            <p>逐题答案、讲解、知识点标签，每题旁标注本班错误率 —— 批改参考与讲评稿同一份。</p>
-            <div class="row"><button class="btn">预览</button><button class="btn">下载</button></div>
-          </div>
-        </div>
+        <div class="docs" style="grid-template-columns:1fr;gap:14px" id="docCards"></div>
 
         <div class="stack">
           <div class="card">
-            <div class="ct">学生名单 <span class="r">22 人 · 全部就绪</span></div>
+            <div class="ct">学生名单 <span class="r" id="rosterR"></span></div>
             <div class="roster tw">
               <table>
                 <thead><tr><th>学生</th><th style="width:52px">得分</th><th style="width:66px">全卷错题</th><th style="width:96px">文档</th></tr></thead>
@@ -722,7 +708,7 @@
             </div>
           </div>
           <div class="card">
-            <div class="ct">家长话术预览 <span class="r">浦绎心</span></div>
+            <div class="ct">家长话术预览 <span class="r" id="msgWho"></span></div>
             <div class="msg" id="msgBox"></div>
             <div class="row" style="display:flex;gap:8px;margin-top:12px">
               <button class="btn" id="copyBtn">复制</button>
@@ -737,116 +723,219 @@
 </div>
 </div>
 <div class="tip" id="tip" role="status"></div>
-
 <script>
 (function () {
   "use strict";
 
-  /* ═══ data ═══════════════════════════════════════════════ */
-
-  /* The seven categories tile the whole paper: 61 objective + 9 subjective = 70.
-     Rates are set so the realised class mean lands near a 74.8 / 100 average. */
-  const CATS = [
-    { id:"c1", zh:"固定搭配与连词", n:6,  rate:.41 },
-    { id:"c2", zh:"短语辨析",       n:4,  rate:.36 },
-    { id:"c3", zh:"时态与语态",     n:13, rate:.22 },
-    { id:"c4", zh:"阅读·细节定位",  n:20, rate:.14 },
-    { id:"c5", zh:"阅读·主旨大意",  n:6,  rate:.41 },
-    { id:"c6", zh:"词汇与语法综合", n:12, rate:.18 },
-    { id:"c7", zh:"书面表达",       n:9,  rate:.52 }
-  ];
-  const TOTAL_Q = CATS.reduce((s, c) => s + c.n, 0);   // 70
+  /* ══════════════════════════════════════════════════════════════
+     砺知 — three subjects, one engine.
+     Each subject supplies its own taxonomy, question types, sample
+     rows and copy. Everything downstream (stats, charts, documents)
+     is computed from that one description, so no two panels can
+     disagree with each other.
+     ══════════════════════════════════════════════════════════════ */
 
   const NAMES = ["陈嘉禾","李思远","浦绎心","张一鸣","王梓涵","刘可欣","孙悦","周子谦",
-                 "吴雨桐","郑亦然","何晨曦","徐乐言","马知微","高niv","林书白","黄允","朱ее",
-                 "唐清和","冯望舒","蒋南初","韩星野","沈попе"];
-  // keep the roster clean and plausible
-  NAMES[13] = "高逸尘"; NAMES[16] = "朱明轩"; NAMES[21] = "沈知许";
+                 "吴雨桐","郑亦然","何晨曦","徐乐言","马知微","高逸尘","林书白","黄允",
+                 "朱明轩","唐清和","冯望舒","蒋南初","韩星野","沈知许"];
 
-  const SCORES = [92,88,84.5,83,81,80,79,78,77,76,76,75,74,73,71,70,68,66,63,59,56,52];
+  const SUBJECTS = {
 
-  // deterministic PRNG so the demo is stable across reloads
-  let seed = 20260815;
-  const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    /* ─────────────── 语文 ─────────────── */
+    chinese: {
+      zh: "语文",
+      exam: "六年级上 第一单元 阶段测试",
+      cost: "¥0.41",
+      meta: [["学科","语文"],["年级","六年级上"],["题量","58 题 · 客观 39 / 主观 19"],["总分","100 分"],
+             ["作文","1 篇 · 40 分"]],
+      note: ["语文卷的特别之处",
+             "语文的失分大量落在<b style=\"color:var(--tx)\">主观题</b>——赏析、概括、习作，这些没有唯一答案。砺知不去替你判分，而是把你给的扣分点按知识点归类，再统计全班的共性问题。默写与字词这类客观题才做逐题错误率。"],
+      papers: [["P1","语文卷_第1页.jpg","2.6 MB · 已识别 31 题"],
+               ["P2","语文卷_第2页.jpg","2.3 MB · 已识别 27 题"]],
+      keys:   [["ANS","参考答案及评分标准.pdf","240 KB · 已配对 58 题"]],
+      pair:   [["已自动配对","54 题"],["需人工确认","3 题"],["主观题评分标准","已录入"],["待核对","1 题"]],
+      cats: [
+        { id:"c1", zh:"字词与拼音",       n:10, rate:.18 },
+        { id:"c2", zh:"病句与标点",       n:6,  rate:.31 },
+        { id:"c3", zh:"古诗文默写",       n:8,  rate:.22 },
+        { id:"c4", zh:"文言文阅读",       n:9,  rate:.44 },
+        { id:"c5", zh:"现代文·信息提取",  n:12, rate:.19 },
+        { id:"c6", zh:"现代文·赏析",      n:8,  rate:.47 },
+        { id:"c7", zh:"习作",             n:5,  rate:.50 }
+      ],
+      scores: [94,90,86,85,83,82,80,79,78,77,76,75,74,72,71,69,67,65,62,58,55,51],
+      rows: [
+        [12,"下列词语中加点字读音完全正确的一项是","单选","B","字词与拼音",.96],
+        [13,"「他的写作水平明显改进了。」修改病句","改错","提高","病句与标点",.91],
+        [14,"千磨万击还坚劲，____。","默写","任尔东西南北风","古诗文默写",.98],
+        [27,"「孰为汝多知乎」中「知」通____，意为____。","填空","智；智慧","文言文阅读",.89],
+        [28,"手写批注不清 —— 请确认此题是否为「解释加点词『去』」","填空","离开","文言文阅读",.54],
+        [38,"文中画线句运用了什么修辞？有何表达效果？","简答","比喻；生动形象地写出……","现代文·赏析",.72],
+        [41,"用一句话概括第 3 段的主要内容。","简答","（见评分标准）","现代文·信息提取",.86],
+        [58,"习作：《那一刻，我长大了》不少于 400 字","作文","评分标准 40 分","习作",.99]
+      ],
+      hard: [[58,.62,"习作"],[38,.59,"现代文·赏析"],[28,.55,"文言文阅读"],[27,.50,"文言文阅读"],
+             [40,.45,"现代文·赏析"],[13,.41,"病句与标点"],[26,.36,"文言文阅读"],[15,.32,"古诗文默写"],
+             [42,.32,"现代文·信息提取"],[12,.27,"字词与拼音"],[16,.27,"古诗文默写"],[44,.23,"现代文·信息提取"]],
+      advice: {
+        c7:"习作失分集中在「选材扣题」而非语言，建议下节课只讲审题：把题目拆成限定词再选材。",
+        c6:"赏析题答不到点，多是只写了修辞名称没写表达效果。给一个固定答题框架：手法＋内容＋情感。",
+        c4:"文言实词是硬功夫，建议每天课前三分钟默写一组通假字与一词多义。",
+        c2:"病句类型集中在搭配不当与成分残缺，做一次专项对比训练即可见效。",
+        c3:"默写错字多于漏句，说明记住了但写不对，重点抄写易错字。",
+        c1:"字音字形整体稳定，可作为保底项，不必占用课堂时间。",
+        c5:"信息提取题得分率高，暂不安排专项。"
+      },
+      paste: `陈嘉禾: 13,27,38,58
+李思远: 12,13,28,38,40,58
+浦绎心: 27,28,38
+张一鸣 13 15 26 27 28 38 40 58
+王梓涵：12、13、15、16、26、27、28、38、40、42、58
+刘可欣: 26-28,38,40,42,44,58
+孙悦: 13,27,28,38,40,58,59`,
+      msg: (s, st) => `王女士您好，我是${st.name}的语文老师。
 
-  /* Per student, per category: p = class rate × that student's difficulty multiplier.
-     The multipliers are normalised to mean 1, so realised class rates track the
-     authored ones — and strong students get genuine zeros instead of a floor of 1. */
-  const rawM = SCORES.map(sc => 2.2 - 2.0 * ((sc - 52) / 40));
-  const mAvg = rawM.reduce((a, b) => a + b, 0) / rawM.length;
-  const MULT = rawM.map(m => m / mAvg);
+这次第一单元测试，${st.name.slice(1)}考了 ${st.score} 分，班级平均 ${s.mean.toFixed(1)} 分，整体是不错的。字词、默写这些需要下功夫记的部分，掌握得很扎实。
 
-  const STUDENTS = NAMES.map((name, i) => {
-    const cells = CATS.map(c => {
-      const p = Math.min(1, c.rate * MULT[i]);
-      const exact = p * c.n;
-      const wrong = Math.min(c.n, Math.floor(exact) + (rnd() < exact % 1 ? 1 : 0));
-      return { cat: c.id, wrong, total: c.n, rate: wrong / c.n };
-    });
-    return { name, score: SCORES[i], wrong: cells.reduce((s, c) => s + c.wrong, 0), cells };
-  });
+有两个地方这段时间可以多留意：一是文言文的实词，比如通假字和一词多义，这部分靠积累，我已经把本单元的高频词整理在报告第 2 页；二是现代文赏析题，他能看出用了什么修辞，但答不出表达效果，其实是缺一个固定的答题框架——手法、内容、情感三步，报告里给了范例。
 
-  // pin 浦绎心: 2 objective misses (Q30, Q62) plus her subjective losses
-  STUDENTS[2].cells = CATS.map(c => ({
-    cat: c.id, total: c.n,
-    wrong: (c.id === "c1" || c.id === "c2") ? 1 : c.id === "c7" ? 4 : 0,
-    rate:  (c.id === "c1" || c.id === "c2") ? 1 / c.n : c.id === "c7" ? 4 / c.n : 0
-  }));
-  STUDENTS[2].wrong = STUDENTS[2].cells.reduce((a, c) => a + c.wrong, 0);
+练习大概 25 分钟能做完，麻烦您提醒他这周做一下，做完对照答案就行。
 
-  // realised class rates — the category chart must agree with the heatmap
-  CATS.forEach(c => {
-    const w = STUDENTS.reduce((s, st) => s + st.cells.find(x => x.cat === c.id).wrong, 0);
-    c.rate = w / (STUDENTS.length * c.n);
-  });
+有任何问题欢迎随时找我。
 
-  const STATS = (() => {
-    const w = STUDENTS.map(s => s.wrong), sc = STUDENTS.map(s => s.score);
-    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
-    const mw = mean(w), msc = mean(sc);
-    const sd = Math.sqrt(mean(sc.map(v => (v - msc) ** 2)));
-    const sorted = sc.slice().sort((a, b) => a - b);
-    return {
-      mean: msc, median: sorted[Math.floor(sorted.length / 2)], sd,
-      max: Math.max(...sc), min: Math.min(...sc),
-      pass: sc.filter(v => v >= 60).length,
-      meanWrong: mw,
-      atRisk: w.filter(v => v > mw + Math.sqrt(mean(w.map(x => (x - mw) ** 2)))).length
-    };
-  })();
+—— 李老师`
+    },
 
-  const HARD = [
-    { q:70, rate:.68, cat:"书面表达"      }, { q:46, rate:.59, cat:"书面表达"      },
-    { q:64, rate:.55, cat:"阅读·主旨大意" }, { q:30, rate:.41, cat:"固定搭配与连词" },
-    { q:50, rate:.41, cat:"时态与语态"    }, { q:69, rate:.41, cat:"书面表达"      },
-    { q:62, rate:.36, cat:"短语辨析"      }, { q:15, rate:.36, cat:"固定搭配与连词" },
-    { q:44, rate:.32, cat:"时态与语态"    }, { q:23, rate:.32, cat:"阅读·细节定位" },
-    { q:7,  rate:.27, cat:"短语辨析"      }, { q:55, rate:.27, cat:"阅读·细节定位" }
-  ];
+    /* ─────────────── 数学 ─────────────── */
+    math: {
+      zh: "数学",
+      exam: "六年级上 期中测试",
+      cost: "¥0.44",
+      meta: [["学科","数学"],["年级","六年级上"],["题量","54 题 · 客观 38 / 主观 16"],["总分","100 分"],
+             ["公式识别","已启用 · LaTeX"]],
+      note: ["数学卷的特别之处",
+             "数学的题干含公式与图形，识别难度最高。砺知把公式转成 <b style=\"color:var(--tx)\">LaTeX</b> 再排版，避免截图糊掉；<b style=\"color:var(--tx)\">数值型答案会被程序复核</b>——模型给出的解如果算不平，直接标红，不等你去发现。带图的几何题会保留原图裁切。"],
+      papers: [["P1","数学卷_第1页.jpg","2.9 MB · 已识别 30 题"],
+               ["P2","数学卷_第2页.jpg","2.7 MB · 已识别 24 题"]],
+      keys:   [["ANS","答案与解析.pdf","310 KB · 已配对 54 题"],
+               ["CHK","数值复核","38 道客观题已算平 · 1 题不符"]],
+      pair:   [["已自动配对","51 题"],["数值复核不符","1 题"],["含图题目","6 题 · 已裁切"],["待核对","2 题"]],
+      cats: [
+        { id:"c1", zh:"分数四则运算",   n:12, rate:.24 },
+        { id:"c2", zh:"比与比例",       n:8,  rate:.33 },
+        { id:"c3", zh:"圆的周长与面积", n:9,  rate:.38 },
+        { id:"c4", zh:"百分数应用",     n:10, rate:.41 },
+        { id:"c5", zh:"位置与方向",     n:6,  rate:.17 },
+        { id:"c6", zh:"解决问题·综合",  n:9,  rate:.52 }
+      ],
+      scores: [98,95,91,88,86,84,82,80,79,77,76,74,72,70,68,65,62,59,55,50,46,42],
+      rows: [
+        [9, "计算：<span class=\"mathy\">3/4 × 8/9 ÷ 2/3</span> = ____","计算","<span class=\"mathy\">1</span>","分数四则运算",.97],
+        [10,"把 <span class=\"mathy\">0.375</span> 化成最简分数是 ____","填空","<span class=\"mathy\">3/8</span>","分数四则运算",.96],
+        [22,"甲数是乙数的 <span class=\"mathy\">5/8</span>，乙数是甲数的 ____","填空","<span class=\"mathy\">8/5</span>","比与比例",.93],
+        [23,"手写体 —— 请确认题干是否为「甲乙两数之比为 3∶5」","填空","—","比与比例",.52],
+        [31,"一个圆的半径是 3 cm，它的面积是 ____ cm²","填空","<span class=\"mathy\">28.26</span>","圆的周长与面积",.95],
+        [32,"（含图）求阴影部分面积，单位 cm","解答","<span class=\"mathy\">10.75</span>","圆的周长与面积",.78],
+        [40,"某商品先涨价 20%，再降价 20%，现价是原价的 ____%","填空","<span class=\"mathy\">96</span>","百分数应用",.94],
+        [54,"某工程甲队单独做 12 天完成，乙队 18 天，两队合作需几天？","解答","<span class=\"mathy\">7.2 天</span>","解决问题·综合",.90]
+      ],
+      hard: [[54,.68,"解决问题·综合"],[40,.59,"百分数应用"],[32,.55,"圆的周长与面积"],[53,.50,"解决问题·综合"],
+             [41,.45,"百分数应用"],[23,.45,"比与比例"],[31,.41,"圆的周长与面积"],[22,.36,"比与比例"],
+             [39,.32,"百分数应用"],[9,.27,"分数四则运算"],[30,.27,"圆的周长与面积"],[12,.23,"分数四则运算"]],
+      advice: {
+        c6:"综合题失分不是不会算，是读不懂题。建议专讲「把文字改写成关系式」，每题只要求列式不要求算。",
+        c4:"「先涨后降」这类连续百分数最容易错，学生默认加减抵消。用单位「1」画线段图讲一次就能纠正。",
+        c3:"圆面积的错误多为公式记混（周长用了 πr²）。建议做一次公式对照默写。",
+        c2:"比的前后项颠倒是主要错因，强调「谁是谁的几分之几」中的参照量。",
+        c1:"分数运算整体扎实，错的多是约分不彻底，属于习惯问题。",
+        c5:"位置与方向得分率高，暂不安排专项。"
+      },
+      paste: `陈嘉禾: 40,54
+李思远: 23,40,53,54
+浦绎心: 22,31,40,54
+张一鸣 9 22 23 31 32 40 54
+王梓涵：12、22、23、30、31、32、39、40、41、53、54
+刘可欣: 22-24,31,32,39,40,41,53,54
+孙悦: 23,31,32,40,41,53,54,55`,
+      msg: (s, st) => `王女士您好，我是${st.name}的数学老师。
 
-  const QROWS = [
-    [28,"He has lived here ____ 2019.","单选","B. since","时态与语态 · 介词",.97],
-    [29,"They ____ football when it began to rain.","单选","C. were playing","时态与语态",.96],
-    [30,"It helped us connect ____ each other.","单选","A. with","固定搭配与连词",.98],
-    [31,"____ is your new English teacher like?","单选","D. What","疑问句式",.71],
-    [32,"She is good at ____ (draw) pictures.","填空","drawing","动词形式",.94],
-    [33,"The book on the desk ____ mine.","单选","A. is","主谓一致",.95],
-    [34,"手写体 — 请确认题干是否为 “Neither of them ____ been there.”","单选","has","主谓一致",.58],
-    [35,"Kicking jianzi is the same ____ some common sports.","单选","B. as","固定搭配与连词",.93]
-  ];
+这次期中测试，${st.name.slice(1)}考了 ${st.score} 分，班级平均 ${s.mean.toFixed(1)} 分。分数的四则运算很熟练，计算基本功没有问题。
 
-  const rosterMsg = () => `王女士您好，我是浦绎心的英语老师。
+需要留意的是两类题：一是百分数的连续变化，比如「先涨价 20% 再降价 20%」，他按加减抵消算成了原价，其实两次的单位「1」不同，正确答案是原价的 96%；二是稍复杂的应用题，读题时没把文字关系写成算式就直接动笔。这两类都不是计算能力问题，是方法问题，练对了提分很快。
 
-这次预初阶段测试，绎心考了 ${STUDENTS[2].score} 分，班级平均 ${STATS.mean.toFixed(1)} 分，排在班级第 3 名，整体是很不错的。语法主干掌握得扎实，客观题只错了 2 题。
+报告第 2 页有针对这两点的练习，约 25 分钟，建议先只列式不计算，列对了再算。
 
-有两个地方这段时间可以多留意一下：一是介词和动词短语的细微区别，比如"和人交往"用 connect with、"接设备"用 connect to，他知道意思但选的时候容易混；二是简答题答句写得不够完整，容易漏主语或者时态前后不一致，这部分丢的分其实比选择题多。
+有任何问题欢迎随时找我。
+
+—— 李老师`
+    },
+
+    /* ─────────────── 英语 ─────────────── */
+    english: {
+      zh: "英语",
+      exam: "预初卓越英语 · 六年级上 Starter & U1 阶段测试",
+      cost: "¥0.38",
+      meta: [["学科","英语"],["年级","六年级上（预初）"],["题量","70 题 · 客观 61 / 主观 9"],["总分","100 分"],
+             ["听力","本卷不含"]],
+      note: ["英语卷的特别之处",
+             "英语的失分高度集中在<b style=\"color:var(--tx)\">成组的搭配</b>——介词、动词短语、连词。这类错误单看一题看不出规律，放到全班的错误分布里就非常明显。砺知会把同一族的搭配聚成一个知识点，练习也按对比编排，而不是把错题换个名字再问一遍。"],
+      papers: [["P1","试卷_第1页.jpg","2.4 MB · 已识别 34 题"],
+               ["P2","试卷_第2页.jpg","2.1 MB · 已识别 36 题"]],
+      keys:   [["ANS","参考答案.pdf","180 KB · 已配对 70 题"]],
+      pair:   [["已自动配对","67 题"],["需人工确认","2 题"],["主观题评分标准","已录入"],["待核对","1 题"]],
+      cats: [
+        { id:"c1", zh:"固定搭配与连词", n:6,  rate:.41 },
+        { id:"c2", zh:"短语辨析",       n:4,  rate:.36 },
+        { id:"c3", zh:"时态与语态",     n:13, rate:.22 },
+        { id:"c4", zh:"阅读·细节定位",  n:20, rate:.14 },
+        { id:"c5", zh:"阅读·主旨大意",  n:6,  rate:.41 },
+        { id:"c6", zh:"词汇与语法综合", n:12, rate:.18 },
+        { id:"c7", zh:"书面表达",       n:9,  rate:.52 }
+      ],
+      scores: [92,88,84.5,83,81,80,79,78,77,76,76,75,74,73,71,70,68,66,63,59,56,52],
+      pin: { idx:2, cells:{ c1:1, c2:1, c7:4 } },
+      rows: [
+        [28,"He has lived here ____ 2019.","单选","B. since","时态与语态",.97],
+        [29,"They ____ football when it began to rain.","单选","C. were playing","时态与语态",.96],
+        [30,"It helped us connect ____ each other.","单选","A. with","固定搭配与连词",.98],
+        [31,"____ is your new English teacher like?","单选","D. What","词汇与语法综合",.71],
+        [34,"手写体 —— 请确认题干是否为 “Neither of them ____ been there.”","单选","has","词汇与语法综合",.58],
+        [46,"What is your new school life like?","简答","（见评分标准）","书面表达",.88],
+        [62,"Ray ____ his hand and the teacher let him answer.","单选","A. put up","短语辨析",.95],
+        [70,"开放题：What will she keep doing?","简答","（见评分标准）","书面表达",.92]
+      ],
+      hard: [[70,.68,"书面表达"],[46,.59,"书面表达"],[64,.55,"阅读·主旨大意"],[30,.41,"固定搭配与连词"],
+             [50,.41,"时态与语态"],[69,.41,"书面表达"],[62,.36,"短语辨析"],[15,.36,"固定搭配与连词"],
+             [44,.32,"时态与语态"],[23,.32,"阅读·细节定位"],[7,.27,"短语辨析"],[55,.27,"阅读·细节定位"]],
+      advice: {
+        c7:"全班最弱，且失分集中在答句结构而非词汇。建议用一节课专讲「主语＋谓语＋数据」的完整答句模板。",
+        c1:"第 30 题一题就拉走了 9 人。connect with / connect to 属同一类混淆，成组对比讲效率最高。",
+        c5:"只有 6 道题却错了近一半，说明是方法问题不是熟练度问题。首尾句定位法值得单独讲。",
+        c2:"put up / put on / put off 是成组考点，拆开背记不住，要放在一张对照表里讲。",
+        c3:"时态错误多出现在含时间状语的长句，建议先练「找时间标志词」。",
+        c4:"细节题整体稳定，可作为提分的保底项，不必占用课堂时间。",
+        c6:"综合题错误分散，无明显集中考点，暂不单独安排。"
+      },
+      paste: `陈嘉禾: 30B,44,55,64
+李思远: 3,15,30B,44,62C,64,69
+浦绎心: 30B,62C
+张一鸣 7 9 21 30 33 44 55 62 64
+王梓涵：4、11、23、30、38、44、49、62、64、66、69、70
+刘可欣: 3-5,12,30,44,50,62,64,69
+孙悦: 30,44,50,55,62,64,69,71`,
+      msg: (s, st) => `王女士您好，我是${st.name}的英语老师。
+
+这次预初阶段测试，${st.name.slice(1)}考了 ${st.score} 分，班级平均 ${s.mean.toFixed(1)} 分，排在班级第 3 名，整体是很不错的。语法主干掌握得扎实，客观题只错了 2 题。
+
+有两个地方这段时间可以多留意一下：一是介词和动词短语的细微区别，比如「和人交往」用 connect with、「接设备」用 connect to，他知道意思但选的时候容易混；二是简答题答句写得不够完整，容易漏主语或者时态前后不一致，这部分丢的分其实比选择题多。
 
 我已经把针对这两点的练习附在报告第 2 页，大概 25 分钟能做完，麻烦您提醒他这周做一下，做完对照答案就行。下阶段我们的目标是 88 分。
 
 有任何问题欢迎随时找我。
 
-—— 李老师`;
-  const ROSTER_MSG = rosterMsg();
+—— 李老师`
+    }
+  };
 
   /* ═══ helpers ════════════════════════════════════════════ */
 
@@ -857,6 +946,7 @@
                           height:h, class:"chart", role:"img" });
                           s.style.overflow = "visible"; return s; };
   const pc = v => Math.round(v * 100) + "%";
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
 
   const tip = $("#tip");
   function bindTip(node, html) {
@@ -872,41 +962,94 @@
     }
   }
 
+  /* ═══ derive one subject's dataset ═══════════════════════ */
+
+  function build(S) {
+    let seed = 20260815;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+
+    const cats = S.cats.map(c => ({ ...c }));
+    const totalQ = cats.reduce((a, c) => a + c.n, 0);
+    const lo = Math.min(...S.scores), hi = Math.max(...S.scores);
+
+    /* p = class rate × the student's difficulty multiplier, multipliers
+       normalised to mean 1 so realised class rates track the authored ones
+       and strong students get genuine zeros rather than a floor of one. */
+    const raw  = S.scores.map(sc => 2.2 - 2.0 * ((sc - lo) / (hi - lo)));
+    const mAvg = mean(raw);
+    const mult = raw.map(m => m / mAvg);
+
+    const students = NAMES.map((name, i) => {
+      const cells = cats.map(c => {
+        const exact = Math.min(1, c.rate * mult[i]) * c.n;
+        const wrong = Math.min(c.n, Math.floor(exact) + (rnd() < exact % 1 ? 1 : 0));
+        return { cat: c.id, wrong, total: c.n, rate: wrong / c.n };
+      });
+      return { name, score: S.scores[i], wrong: cells.reduce((a, c) => a + c.wrong, 0), cells };
+    });
+
+    if (S.pin) {                              // keep 浦绎心 matching the sample report
+      const st = students[S.pin.idx];
+      st.cells = cats.map(c => {
+        const w = S.pin.cells[c.id] || 0;
+        return { cat: c.id, total: c.n, wrong: w, rate: w / c.n };
+      });
+      st.wrong = st.cells.reduce((a, c) => a + c.wrong, 0);
+    }
+
+    cats.forEach(c => {                       // realised rates — charts must agree
+      const w = students.reduce((a, st) => a + st.cells.find(x => x.cat === c.id).wrong, 0);
+      c.rate = w / (students.length * c.n);
+    });
+
+    const sc = students.map(s => s.score), wr = students.map(s => s.wrong);
+    const msc = mean(sc), mwr = mean(wr);
+    const sdw = Math.sqrt(mean(wr.map(v => (v - mwr) ** 2)));
+    const sorted = sc.slice().sort((a, b) => a - b);
+
+    const stats = {
+      mean: msc, median: sorted[Math.floor(sorted.length / 2)],
+      sd: Math.sqrt(mean(sc.map(v => (v - msc) ** 2))),
+      max: Math.max(...sc), min: Math.min(...sc),
+      pass: sc.filter(v => v >= 60).length,
+      meanWrong: mwr, atRisk: wr.filter(v => v > mwr + sdw).length
+    };
+    return { S, cats, totalQ, students, stats };
+  }
+
   /* ═══ charts ═════════════════════════════════════════════ */
 
-  // 1 — error rate by question (single series, threshold line)
-  function chartQ() {
+  function chartQ(D) {
+    const hard = D.S.hard, n = D.students.length;
     const W = 420, rowH = 22, padL = 42, padR = 40, top = 6;
-    const H = top + HARD.length * rowH + 16;
+    const H = top + hard.length * rowH + 16;
     const s = svg(W, H); s.setAttribute("aria-label", "错误率最高的 12 题");
     const w = W - padL - padR;
 
-    HARD.forEach((d, i) => {
+    hard.forEach(([q, rate, cat], i) => {
       const y = top + i * rowH;
-      s.appendChild(el("text", { x: padL - 8, y: y + 12, "text-anchor":"end", class:"lbl" })).textContent = "Q" + d.q;
+      s.appendChild(el("text", { x: padL - 8, y: y + 12, "text-anchor":"end", class:"lbl" })).textContent = "第" + q + "题";
       s.appendChild(el("rect", { x: padL, y: y + 4, width: w, height: 10, rx: 4, class:"trk" }));
-      const bar = el("rect", { x: padL, y: y + 4, width: Math.max(4, w * d.rate), height: 10, rx: 4, class:"bar" });
+      const bar = el("rect", { x: padL, y: y + 4, width: Math.max(4, w * rate), height: 10, rx: 4, class:"bar" });
       s.appendChild(bar);
-      s.appendChild(el("text", { x: padL + w + 7, y: y + 12, class:"val" })).textContent = pc(d.rate);
-      bindTip(bar, `<b>第 ${d.q} 题</b><span class="m">${d.cat}</span>
-                    <span class="m">${Math.round(d.rate*22)} / 22 人做错 · ${pc(d.rate)}</span>`);
+      s.appendChild(el("text", { x: padL + w + 7, y: y + 12, class:"val" })).textContent = pc(rate);
+      bindTip(bar, `<b>第 ${q} 题</b><span class="m">${cat}</span>
+                    <span class="m">${Math.round(rate * n)} / ${n} 人做错 · ${pc(rate)}</span>`);
     });
 
     const tx = padL + w * .5;
-    s.appendChild(el("line", { x1: tx, y1: top - 2, x2: tx, y2: top + HARD.length * rowH, class:"thr" }));
+    s.appendChild(el("line", { x1: tx, y1: top - 2, x2: tx, y2: top + hard.length * rowH, class:"thr" }));
     s.appendChild(el("text", { x: tx, y: H - 4, "text-anchor":"middle", class:"thrl" })).textContent = "50% 半数以上";
     $("#cQ").appendChild(s);
   }
 
-  // 2 — error rate by category (normalised by question count)
-  function chartC() {
-    const W = 420, rowH = 30, padL = 108, padR = 42, top = 4;
-    const H = top + CATS.length * rowH;
+  function chartC(D) {
+    const W = 420, rowH = 30, padL = 112, padR = 42, top = 4;
+    const H = top + D.cats.length * rowH;
     const s = svg(W, H); s.setAttribute("aria-label", "各知识点错误率");
     const w = W - padL - padR;
-    const sorted = CATS.slice().sort((a, b) => b.rate - a.rate);
 
-    sorted.forEach((c, i) => {
+    D.cats.slice().sort((a, b) => b.rate - a.rate).forEach((c, i) => {
       const y = top + i * rowH;
       s.appendChild(el("text", { x: padL - 10, y: y + 12, "text-anchor":"end", class:"lbl" })).textContent = c.zh;
       s.appendChild(el("text", { x: padL - 10, y: y + 23, "text-anchor":"end", class:"val" })).textContent = c.n + " 题";
@@ -914,57 +1057,54 @@
       const bar = el("rect", { x: padL, y: y + 4, width: Math.max(4, w * c.rate), height: 11, rx: 4, class:"bar" });
       s.appendChild(bar);
       s.appendChild(el("text", { x: padL + w + 7, y: y + 13, class:"val" })).textContent = pc(c.rate);
-      const people = STUDENTS.filter(st => st.cells.find(x => x.cat === c.id).wrong > 0).length;
+      const ppl = D.students.filter(st => st.cells.find(x => x.cat === c.id).wrong > 0).length;
       bindTip(bar, `<b>${c.zh}</b><span class="m">本卷 ${c.n} 题 · 错误率 ${pc(c.rate)}</span>
-                    <span class="m">${people} / 22 人在此知识点上有失分</span>`);
+                    <span class="m">${ppl} / ${D.students.length} 人在此知识点上有失分</span>`);
     });
     $("#cC").appendChild(s);
   }
 
-  // 3 — student × category heatmap (sequential, one hue)
-  function chartH() {
+  function chartH(D) {
     const RAMP = ["--s1","--s2","--s3","--s4","--s5"];
     const step = r => r <= .001 ? "var(--panel-2)"
                     : `var(${RAMP[Math.min(4, Math.floor(r * 4.999))]})`;
 
     const W = 900, padL = 96, padR = 46, padT = 52, ch = 15, gap = 3;
-    const cw = (W - padL - padR) / CATS.length;
-    const H = padT + STUDENTS.length * (ch + gap);
+    const cw = (W - padL - padR) / D.cats.length;
+    const H = padT + D.students.length * (ch + gap);
     const s = svg(W, H); s.setAttribute("aria-label", "学生与知识点错误率热力图");
 
-    CATS.forEach((c, j) => {
+    D.cats.forEach((c, j) => {
       const x = padL + j * cw + cw / 2;
-      const t = el("text", { x, y: padT - 12, "text-anchor":"middle", class:"lbl" });
-      t.textContent = c.zh; s.appendChild(t);
+      s.appendChild(el("text", { x, y: padT - 12, "text-anchor":"middle", class:"lbl" })).textContent = c.zh;
       s.appendChild(el("text", { x, y: padT - 1, "text-anchor":"middle" })).textContent = c.n + " 题";
     });
 
-    STUDENTS.forEach((st, i) => {
+    D.students.forEach((st, i) => {
       const y = padT + i * (ch + gap);
       s.appendChild(el("text", { x: padL - 12, y: y + 11, "text-anchor":"end", class:"lbl" })).textContent = st.name;
       st.cells.forEach((cell, j) => {
         const r = el("rect", { x: padL + j * cw + 1, y, width: cw - gap, height: ch, rx: 3,
                                class:"cell", fill: step(cell.rate) });
         s.appendChild(r);
-        bindTip(r, `<b>${st.name} · ${CATS[j].zh}</b>
+        bindTip(r, `<b>${st.name} · ${D.cats[j].zh}</b>
                     <span class="m">错 ${cell.wrong} / ${cell.total} 题 · ${pc(cell.rate)}</span>`);
       });
-      s.appendChild(el("text", { x: W - padR + 10, y: y + 11, class:"val" }))
-       .textContent = st.score + " 分";
+      s.appendChild(el("text", { x: W - padR + 10, y: y + 11, class:"val" })).textContent = st.score + " 分";
     });
     $("#cH").appendChild(s);
 
+    $("#rampSw").innerHTML = "";
     RAMP.forEach(v => { const b = document.createElement("span");
                         b.style.background = `var(${v})`; $("#rampSw").appendChild(b); });
   }
 
-  // 4 — distribution of wrong-answer counts
-  function chartD() {
-    const vals = STUDENTS.map(s => s.wrong);
+  function chartD(D) {
+    const vals = D.students.map(s => s.wrong);
     const lo = Math.floor(Math.min(...vals) / 4) * 4, hi = Math.max(...vals);
     const step = Math.max(2, Math.ceil((hi - lo + 1) / 6));
     const bins = Array.from({ length: 6 }, (_, i) => [lo + i * step, lo + (i + 1) * step - 1]);
-    bins[5][1] = 999;
+    bins[5][1] = 9999;
     const counts = bins.map(([a, b]) => vals.filter(v => v >= a && v <= b).length);
     const max = Math.max(...counts);
 
@@ -974,10 +1114,8 @@
 
     [0, .5, 1].forEach(f => {
       const y = 10 + h * (1 - f);
-      s.appendChild(el("line", { x1: padL, y1: y, x2: W - 10, y2: y,
-                                 stroke:"var(--line)", "stroke-width":1 }));
-      s.appendChild(el("text", { x: padL - 7, y: y + 3, "text-anchor":"end" }))
-       .textContent = Math.round(max * f);
+      s.appendChild(el("line", { x1: padL, y1: y, x2: W - 10, y2: y, stroke:"var(--line)", "stroke-width":1 }));
+      s.appendChild(el("text", { x: padL - 7, y: y + 3, "text-anchor":"end" })).textContent = Math.round(max * f);
     });
 
     counts.forEach((c, i) => {
@@ -985,7 +1123,7 @@
       const x = padL + i * bw;
       const bar = el("rect", { x: x + 4, y: 10 + h - bh, width: bw - 10, height: bh, rx: 4, class:"bar" });
       s.appendChild(bar);
-      const lab = bins[i][1] === 999 ? bins[i][0] + "+" : bins[i][0] + "–" + bins[i][1];
+      const lab = bins[i][1] === 9999 ? bins[i][0] + "+" : bins[i][0] + "–" + bins[i][1];
       s.appendChild(el("text", { x: x + bw/2, y: H - 14, "text-anchor":"middle" })).textContent = lab;
       bindTip(bar, `<b>错 ${lab} 题</b><span class="m">${c} 人</span>`);
     });
@@ -993,52 +1131,134 @@
     $("#cD").appendChild(s);
   }
 
-  /* ═══ tables ═════════════════════════════════════════════ */
+  /* ═══ panels ═════════════════════════════════════════════ */
 
-  function fillReview() {
-    $("#qrows").innerHTML = QROWS.map(([n, q, t, a, c, cf]) => `
-      <tr class="${cf < .8 ? "flag" : ""}">
-        <td class="n">${n}</td>
-        <td class="q">${q}</td>
-        <td>${t}</td>
-        <td class="n">${a}</td>
-        <td><span class="tag ed">${c}</span></td>
-        <td><span class="conf ${cf < .8 ? "low" : ""}">
-              <span class="b"><i style="width:${Math.round(cf*100)}%"></i></span>${Math.round(cf*100)}%
-            </span></td>
-      </tr>`).join("");
+  function fileRow([tag, name, meta], state) {
+    return `<div class="file">
+      <span class="th">${tag}</span>
+      <span><span class="nm">${name}</span><br><span class="mt">${meta}</span></span>
+      <span class="st done">✓ ${state}</span>
+    </div>`;
   }
 
-  function fillScores() {
-    const SUBJ_PTS = 1.5;   // marks per subjective question on this paper
-    const notes = { 5: ["3-5 已展开", "w"], 6: ["Q71 超出题号范围", "c"] };
-    const rows = STUDENTS.slice(0, 7).map((st, i) => {
-      const subj = st.cells.find(c => c.cat === "c7").wrong;
-      const obj  = st.wrong - subj;
+  function render(D) {
+    const { S, cats, totalQ, students, stats } = D;
+    const n = students.length;
+
+    $("#sessLine").innerHTML = `2026 秋 · <b>${S.exam}</b> · ${n} 份卷面`;
+    $("#cost").textContent = S.cost;
+
+    /* 1 · paper */
+    $("#paperFiles").innerHTML = S.papers.map(f => fileRow(f, "完成")).join("");
+    $("#metaRows").innerHTML = S.meta.map(([k, v]) =>
+      `<tr><td style="width:82px">${k}</td><td class="q">${v}</td></tr>`).join("");
+    $("#subjNote").innerHTML =
+      `<div class="ct">${S.note[0]}</div>
+       <p style="margin:0;font-size:12.5px;color:var(--tx-2);line-height:1.65">${S.note[1]}</p>`;
+
+    /* 2 · answer key */
+    $("#ansSub").textContent = `${totalQ} 题已配对 · ${S.pair.find(p => p[0] === "待核对")[1]}待你确认 —— 只需看标黄的行`;
+    $("#keyFiles").innerHTML = S.keys.map(f => fileRow(f, "完成")).join("");
+    $("#pairR").textContent = S.zh + "卷";
+    $("#pairRows").innerHTML = S.pair.map(([k, v], i) =>
+      `<tr><td style="width:118px">${k}</td><td class="q">${
+        i === S.pair.length - 1 ? `<span class="pill w">${v}</span>` : v}</td></tr>`).join("");
+    $("#qrows").innerHTML = S.rows.map(([q, txt, type, ans, cat, cf]) => `
+      <tr class="${cf < .8 ? "flag" : ""}">
+        <td class="n">${q}</td>
+        <td class="q">${txt}</td>
+        <td>${type}</td>
+        <td class="n">${ans}</td>
+        <td><span class="tag ed">${cat}</span></td>
+        <td><span class="conf ${cf < .8 ? "low" : ""}">
+              <span class="b"><i style="width:${Math.round(cf * 100)}%"></i></span>${Math.round(cf * 100)}%
+            </span></td>
+      </tr>`).join("");
+
+    /* 3 · wrong numbers */
+    $("#pasteBox").value = S.paste;
+    $("#pasteHint").textContent = "可选：在题号后加上他选的选项";
+    $("#pasteNote").innerHTML =
+      `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.9v.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+       <span>${S.zh === "英语"
+         ? '<b style="color:var(--tx-2)">30B</b> 表示第 30 题他选了 B。多敲一个字母，报告就能写「你选的 to 为什么错」，而不只是「正确答案是 with」。'
+         : '<b style="color:var(--tx-2)">40B</b> 这样在题号后加选项，报告就能针对他选的那个干扰项讲，而不只是复述正确答案。'}
+       完全可选。<b style="color:var(--tx-2)">3-5</b> 自动展开为 3、4、5；<b style="color:var(--tx-2)">无</b> / <b style="color:var(--tx-2)">满分</b> 记为零错题。</span>`;
+
+    const subjCat = cats[cats.length - 1];
+    const PTS = { 语文: 2.0, 数学: 2.5, 英语: 1.5 }[S.zh];
+    const notes = { 5: ["3-5 已展开", "w"], 6: [`第 ${totalQ + 1} 题超出范围`, "c"] };
+    $("#srows").innerHTML = students.slice(0, 7).map((st, i) => {
+      const sub = st.cells.find(c => c.cat === subjCat.id).wrong;
       const [txt, kind] = notes[i] || ["已校验", ""];
       return `<tr${kind === "c" ? ' class="flag"' : ""}>
         <td class="q">${st.name}</td>
-        <td class="n">${obj}</td>
-        <td class="n">${subj ? (subj * SUBJ_PTS).toFixed(1) : "—"}</td>
-        <td><span class="pill ${kind}">${txt}</span></td>
-      </tr>`;
-    });
-    $("#srows").innerHTML = rows.join("");
-    $("#svCount").textContent = `7 名已录入 / 共 ${STUDENTS.length} 名 · 1 处待修正`;
-  }
+        <td class="n">${st.wrong - sub}</td>
+        <td class="n">${sub ? (sub * PTS).toFixed(1) : "—"}</td>
+        <td><span class="pill ${kind}">${txt}</span></td></tr>`;
+    }).join("");
+    $("#svCount").textContent = `7 名已录入 / 共 ${n} 名 · 1 处待修正`;
 
-  function fillRoster() {
-    $("#rrows").innerHTML = STUDENTS.map(s => `
-      <tr>
-        <td class="q">${s.name}</td>
-        <td class="n">${s.score}</td>
-        <td class="n">${s.wrong}</td>
-        <td><span class="pill g">✓ 4 份</span></td>
-      </tr>`).join("");
-    $("#msgBox").textContent = ROSTER_MSG;
+    /* 4 · analyze */
+    $("#anSub").textContent =
+      `${n} 份卷面 · ${totalQ} 题 · ${cats.length} 个知识点 —— 全部为本地计算，可复现，不经过模型`;
+    $("#kpis").innerHTML = [
+      ["班级平均", stats.mean.toFixed(1), " /100", `中位数 ${stats.median} · σ ${stats.sd.toFixed(1)}`, ""],
+      ["最高 / 最低", stats.max, " / " + stats.min, `极差 ${(stats.max - stats.min).toFixed(0)} 分`, ""],
+      ["及格率", Math.round(stats.pass / n * 100), "%", `${stats.pass} / ${n} 人 ≥ 60`, ""],
+      ["人均错题", stats.meanWrong.toFixed(1), " 题", `全卷 ${totalQ} 题`, ""],
+      ["需重点关注", stats.atRisk, " 人", "错题数超过均值 1σ", "var(--crit)"]
+    ].map(([a, b, c, d, col]) =>
+      `<div class="kpi"><div class="k">${a}</div>
+       <div class="v"${col ? ` style="color:${col}"` : ""}>${b}<small>${c}</small></div>
+       <div class="d">${d}</div></div>`).join("");
+
+    $("#insight").innerHTML = "<h4>下周优先重教这三项</h4>" +
+      cats.slice().sort((a, b) => b.rate - a.rate).slice(0, 3).map((c, i) =>
+        `<p><b>${i + 1} · ${c.zh}（错误率 ${pc(c.rate)}）</b> —— ${S.advice[c.id]}</p>`).join("");
+
+    ["#cQ", "#cC", "#cH", "#cD"].forEach(k => { $(k).innerHTML = ""; });
+    chartQ(D); chartC(D); chartH(D); chartD(D);
+
+    /* 5 · export */
+    $("#exSub").textContent = `四类文档已就绪 · 共 ${n * 2 + 2} 个文件`;
+    $("#docCards").innerHTML = [
+      ["", "个人诊断报告", `PDF × ${n} · 每份 2 页`,
+       "第 1 页诊断，第 2 页是可撕下的练习卷。含错因分析、干扰项讲解与三级梯度练习。",
+       '<path d="M3.5 1.5h6l3 3v10h-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>'],
+      ["", "班级分析报告", "PDF × 1 · 4 页",
+       "错误率分布、知识点归一化对比、学生 × 知识点热力图、分数直方图与教学重点。",
+       '<path d="M2 13.5h12M4 13V8m3.5 5V4m3.5 9V6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'],
+      ["v", "家长沟通话术", `TXT × ${n} · 微信可直接粘贴`,
+       "150–250 字，无术语。语气可调（温和 / 中性 / 直接），可加署名。",
+       '<path d="M2 4.5h12v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 5 8 9l5.5-4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>'],
+      ["v", "答案解析", "PDF × 1 · 含班级错误率",
+       "逐题答案、讲解、知识点标签，每题旁标注本班错误率 —— 批改参考与讲评稿同一份。",
+       '<path d="M3 2.5h10v11H3z" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 6.5l1.5 1.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>']
+    ].map(([v, title, meta, desc, path]) => `
+      <div class="doc ${v}">
+        <div class="top2">
+          <span class="ic"><svg width="17" height="17" viewBox="0 0 16 16" fill="none">${path}</svg></span>
+          <div><h3>${title}</h3><div class="meta">${meta}</div></div>
+        </div>
+        <p>${desc}</p>
+        <div class="row"><button class="btn">预览</button><button class="btn">下载${
+          meta.includes("× 1") ? "" : "全部"}</button></div>
+      </div>`).join("");
+
+    $("#rosterR").textContent = `${n} 人 · 全部就绪`;
+    $("#rrows").innerHTML = students.map(s =>
+      `<tr><td class="q">${s.name}</td><td class="n">${s.score}</td>
+       <td class="n">${s.wrong}</td><td><span class="pill g">✓ 4 份</span></td></tr>`).join("");
+
+    const who = students[S.pin ? S.pin.idx : 2];
+    $("#msgWho").textContent = who.name;
+    $("#msgBox").textContent = S.msg(stats, who);
   }
 
   /* ═══ interaction ════════════════════════════════════════ */
+
+  let CUR = "english";
 
   $("#steps").addEventListener("click", e => {
     const b = e.target.closest(".step"); if (!b) return;
@@ -1051,66 +1271,43 @@
     $(".main").scrollTop = 0;
   });
 
+  document.querySelectorAll(".subs button").forEach(b =>
+    b.addEventListener("click", () => {
+      CUR = b.dataset.sub;
+      document.querySelectorAll(".subs button").forEach(x =>
+        x.setAttribute("aria-pressed", x === b));
+      render(build(SUBJECTS[CUR]));
+    }));
+
   document.querySelectorAll(".tabs").forEach(g =>
     g.addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       g.querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
     }));
 
+  document.querySelectorAll(".ansmode .opt").forEach((o, _, all) =>
+    o.addEventListener("click", () => {
+      all.forEach(x => x.removeAttribute("data-sel"));
+      o.setAttribute("data-sel", "1");
+    }));
+
   const app = $("#app");
-  $("#tDark").addEventListener("click", () => setTheme("dark"));
-  $("#tLight").addEventListener("click", () => setTheme("light"));
-  function setTheme(t) {
+  const setTheme = t => {
     app.dataset.appTheme = t;
     $("#tDark").setAttribute("aria-pressed", t === "dark");
     $("#tLight").setAttribute("aria-pressed", t === "light");
     document.body.style.background = getComputedStyle(app).getPropertyValue("--bg").trim();
-  }
+  };
+  $("#tDark").addEventListener("click", () => setTheme("dark"));
+  $("#tLight").addEventListener("click", () => setTheme("light"));
 
   $("#copyBtn").addEventListener("click", function () {
     const b = this;
-    if (navigator.clipboard) navigator.clipboard.writeText(ROSTER_MSG).catch(() => {});
+    if (navigator.clipboard) navigator.clipboard.writeText($("#msgBox").textContent).catch(() => {});
     b.textContent = "已复制";
     setTimeout(() => { b.textContent = "复制"; }, 1600);
   });
 
-  const ADVICE = {
-    c7: "全班最弱，且失分集中在答句结构而非词汇。建议用一节课专讲「主语＋谓语＋数据」的完整答句模板。",
-    c1: "第 30 题一题就拉走了 9 人。connect with / connect to 属同一类混淆，成组对比讲效率最高。",
-    c5: "只有 6 道题却错了近一半，说明是方法问题不是熟练度问题。首尾句定位法值得单独讲。",
-    c2: "put up / put on / put off 是成组考点，拆开背记不住，要放在一张对照表里讲。",
-    c3: "时态错误多出现在含时间状语的长句，建议先练「找时间标志词」。",
-    c4: "细节题整体稳定，可作为提分的保底项，不必占用课堂时间。",
-    c6: "综合题错误分散，无明显集中考点，暂不单独安排。"
-  };
-
-  function fillInsight() {
-    const top = CATS.slice().sort((a, b) => b.rate - a.rate).slice(0, 3);
-    $("#insight").innerHTML =
-      "<h4>下周优先重教这三项</h4>" +
-      top.map((c, i) =>
-        `<p><b>${i + 1} · ${c.zh}（错误率 ${pc(c.rate)}）</b> —— ${ADVICE[c.id]}</p>`).join("");
-  }
-
-  function fillKpis() {
-    const k = [
-      ["班级平均", STATS.mean.toFixed(1), " /100", `中位数 ${STATS.median} · σ ${STATS.sd.toFixed(1)}`, ""],
-      ["最高 / 最低", STATS.max, " / " + STATS.min, `极差 ${(STATS.max - STATS.min).toFixed(0)} 分`, ""],
-      ["及格率", Math.round(STATS.pass / STUDENTS.length * 100), "%", `${STATS.pass} / ${STUDENTS.length} 人 ≥ 60`, ""],
-      ["人均错题", STATS.meanWrong.toFixed(1), " 题", `全卷 ${TOTAL_Q} 题`, ""],
-      ["需重点关注", STATS.atRisk, " 人", "错题数超过均值 1σ", "var(--crit)"]
-    ];
-    $("#kpis").innerHTML = k.map(([a, b, c, d, col]) => `
-      <div class="kpi">
-        <div class="k">${a}</div>
-        <div class="v"${col ? ` style="color:${col}"` : ""}>${b}<small>${c}</small></div>
-        <div class="d">${d}</div>
-      </div>`).join("");
-  }
-
-  /* ═══ go ═════════════════════════════════════════════════ */
-  $("#anSub").textContent = `${STUDENTS.length} 份卷面 · ${TOTAL_Q} 题 · ${CATS.length} 个知识点 —— 全部为本地计算，可复现，不经过模型`;
-  fillKpis(); fillInsight(); fillReview(); fillScores(); fillRoster();
-  chartQ(); chartC(); chartH(); chartD();
+  render(build(SUBJECTS[CUR]));
 })();
 </script>
