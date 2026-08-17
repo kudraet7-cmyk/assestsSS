@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSession } from "@/lib/store";
 import { analyse } from "@/lib/analysis";
 import { Card, Button, PageHead, Pill, Note } from "@/components/ui";
+import { LimitNotice } from "@/components/Paywall";
+import { checkLimits, watermarked, PLANS } from "@/lib/plans";
 
 const DOCS = [
   { key: "student", title: "个人诊断报告", per: true, tone: "cyan",
@@ -18,7 +20,7 @@ const DOCS = [
 ] as const;
 
 export default function ExportPage() {
-  const { questions, students, taxonomy, meta } = useSession();
+  const { questions, students, taxonomy, meta, plan, examsThisMonth } = useSession();
   const analysis = useMemo(
     () => analyse(questions, students, taxonomy, { totalMarks: meta.totalMarks }),
     [questions, students, taxonomy, meta.totalMarks],
@@ -26,6 +28,10 @@ export default function ExportPage() {
 
   const unverified = questions.filter((q) => !q.verified).length;
   const ready = students.length > 0 && questions.length > 0;
+  const breaches = checkLimits(plan, {
+    studentCount: students.length, examsThisMonth, classCount: 1,
+  });
+  const overLimit = breaches.length > 0;
 
   if (!ready) {
     return (
@@ -49,10 +55,20 @@ export default function ExportPage() {
         actions={<Button variant="primary" disabled title="PDF 引擎在 Phase 3">打包下载 .zip</Button>}
       />
 
+      {overLimit && <div className="mb-3.5"><LimitNotice breaches={breaches} /></div>}
+      {!overLimit && watermarked(plan) && (
+        <div className="mb-3.5">
+          <Note>
+            当前为{PLANS[plan].nameZh}，导出的 PDF 会带水印。
+            升级到个人版即可去除 —— <a href="/pricing" className="text-[var(--cyan)]">查看套餐</a>。
+          </Note>
+        </div>
+      )}
+
       <div className="grid gap-3.5 lg:grid-cols-2">
         <div className="flex flex-col gap-3.5">
           {DOCS.map((d) => {
-            const blocked = d.key === "key" && unverified > 0;
+            const blocked = (d.key === "key" && unverified > 0) || overLimit;
             return (
               <Card key={d.key}>
                 <div className="flex items-start gap-3">
@@ -69,10 +85,14 @@ export default function ExportPage() {
                       {d.per ? `× ${students.length}` : "× 1"}
                     </div>
                   </div>
-                  {blocked && <span className="ml-auto"><Pill tone="crit">已锁定</Pill></span>}
+                  {blocked && (
+                    <span className="ml-auto">
+                      <Pill tone="crit">{overLimit ? "超出额度" : "已锁定"}</Pill>
+                    </span>
+                  )}
                 </div>
                 <p className="mt-2.5 mb-0 text-[12.5px] leading-relaxed text-[var(--tx-2)]">{d.desc}</p>
-                {blocked && (
+                {blocked && !overLimit && (
                   <Note>
                     还有 <b className="text-[var(--tx-2)]">{unverified} 题</b>未核对答案。
                     请回到 <Link href="/answers" className="text-[var(--cyan)]">第 2 步</Link> 逐题确认 ——

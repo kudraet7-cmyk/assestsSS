@@ -4,18 +4,26 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/store";
 import { SUBJECTS } from "@/lib/subjects";
-import { analyse, teachingFocus } from "@/lib/analysis";
-import { Card, Button, PageHead, Stat, Note } from "@/components/ui";
+import { analyse, teachingFocus, itemAnalysis, flaggedItems, deriveScores } from "@/lib/analysis";
+import { Card, Button, PageHead, Pill, Stat, Note } from "@/components/ui";
 import { HardestQuestions, CategoryRates, Heatmap, RampLegend, Distribution } from "@/components/charts/Charts";
 
 export default function AnalysisPage() {
   const { subject, questions, students, taxonomy, meta } = useSession();
   const pack = SUBJECTS[subject];
 
-  const analysis = useMemo(
-    () => analyse(questions, students, taxonomy, { totalMarks: meta.totalMarks }),
-    [questions, students, taxonomy, meta.totalMarks],
+  // Scores come from the roster when given, and are derived from question points
+  // when not — so 班级分析 works without asking the teacher to type them twice.
+  const scored = useMemo(
+    () => deriveScores(questions, students, meta.totalMarks),
+    [questions, students, meta.totalMarks],
   );
+  const analysis = useMemo(
+    () => analyse(questions, scored, taxonomy, { totalMarks: meta.totalMarks }),
+    [questions, scored, taxonomy, meta.totalMarks],
+  );
+  const items = useMemo(() => itemAnalysis(questions, scored), [questions, scored]);
+  const flagged = useMemo(() => flaggedItems(items), [items]);
 
   const cs = analysis.classStats;
   const catName = (id: string) => taxonomy.find((c) => c.id === id)?.nameZh ?? id;
@@ -108,6 +116,51 @@ export default function AnalysisPage() {
             {pack.neverAutoGrade && (
               <Note>主观题的扣分点来自你的批改记录，砺知只做归类与统计，不替你判分。</Note>
             )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-3.5">
+        <Card title="试题质量 · 难度系数与区分度"
+              right={flagged.length ? `${flagged.length} 题建议复核` : "全部达标"}>
+          <p className="mb-3 mt-0 text-[12px] leading-relaxed text-[var(--tx-3)]">
+            难度系数 = 答对比例，越高越简单。区分度 = 前 27% 与后 27% 学生的答对率之差，
+            衡量这道题能不能把水平不同的学生分开。<b className="text-[var(--tx-2)]">区分度低于 0.2、
+            或几乎全对 / 全错的题，出题价值不高</b>；区分度为负通常意味着题干有歧义或答案标错。
+            这两个数字全部本地算出，不消耗任何 API。
+          </p>
+          <div className="-mx-5 -mb-5 max-h-[300px] overflow-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr>
+                  {["题号", "知识点", "难度系数", "区分度", "评价", "最多人选的干扰项"].map((h) => (
+                    <th key={h} className="sticky top-0 whitespace-nowrap border-b border-[var(--line)] bg-[var(--panel)] px-3.5 pb-2 pt-1 text-left font-mono text-[9.5px] font-semibold uppercase tracking-[0.13em] text-[var(--tx-3)]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...items].sort((a, b) => a.discrimination - b.discrimination).slice(0, 25).map((it) => {
+                  const bad = it.discrimination < 0.2;
+                  const tone = it.quality === "excellent" ? "ok" : it.quality === "good" ? "ok"
+                             : it.quality === "marginal" ? "warn" : "crit";
+                  const label = { excellent: "优秀", good: "良好", marginal: "勉强", poor: "建议复核" }[it.quality];
+                  return (
+                    <tr key={it.number} className={bad ? "bg-[color-mix(in_srgb,var(--warn)_6%,transparent)]" : ""}>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2 font-mono tabular-nums text-[var(--tx)]">{it.number}</td>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2 text-[var(--tx-2)]">{catName(it.categoryId)}</td>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2 font-mono tabular-nums text-[var(--tx)]">{it.difficulty.toFixed(2)}</td>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2 font-mono tabular-nums text-[var(--tx)]">{it.discrimination.toFixed(2)}</td>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2"><Pill tone={tone as "ok" | "warn" | "crit"}>{label}</Pill></td>
+                      <td className="border-b border-[var(--line)] px-3.5 py-2 text-[var(--tx-2)]">
+                        {it.topDistractor ? `${it.topDistractor.option} · ${it.topDistractor.count} 人` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </Card>
       </div>

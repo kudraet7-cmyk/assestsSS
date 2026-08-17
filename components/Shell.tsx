@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "@/lib/store";
 import { SUBJECT_ORDER, SUBJECTS } from "@/lib/subjects";
+import { PlanBadge } from "@/components/Paywall";
 
 export const STEPS = [
   { href: "/paper",    zh: "上传试卷原卷", en: "Paper" },
@@ -56,6 +57,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const setSubject = useSession((s) => s.setSubject);
   const meta = useSession((s) => s.meta);
   const students = useSession((s) => s.students);
+  const plan = useSession((s) => s.plan);
 
   const current = Math.max(0, STEPS.findIndex((s) => pathname.startsWith(s.href)));
 
@@ -87,6 +89,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </button>
             ))}
           </div>
+          <PlanBadge planId={plan} />
           <ThemeToggle />
         </div>
       </header>

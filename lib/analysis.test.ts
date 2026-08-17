@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyse, teachingFocus, median, stdDev } from "./analysis";
+import { analyse, teachingFocus, median, stdDev, itemAnalysis, flaggedItems, deriveScores } from "./analysis";
 import type { Category, Question, Student } from "./types";
 
 const taxonomy: Category[] = [
@@ -111,5 +111,97 @@ describe("summary helpers", () => {
   it("computes a population standard deviation", () => {
     expect(stdDev([2, 2, 2])).toBe(0);
     expect(stdDev([1, 3])).toBe(1);
+  });
+});
+
+describe("itemAnalysis", () => {
+  // 6 students, ranked by score. Q1 separates strong from weak perfectly;
+  // Q2 is missed by everyone; Q3 is missed only by the strongest.
+  const qs: Question[] = [1, 2, 3].map((n) => ({
+    number: n, text: "", type: "choice", categoryId: "a", confidence: 1,
+  }));
+  const ss: Student[] = [
+    { id: "1", name: "a", score: 100, wrongQuestions: [2, 3] },
+    { id: "2", name: "b", score: 90,  wrongQuestions: [2] },
+    { id: "3", name: "c", score: 80,  wrongQuestions: [2] },
+    { id: "4", name: "d", score: 40,  wrongQuestions: [1, 2] },
+    { id: "5", name: "e", score: 30,  wrongQuestions: [1, 2] },
+    { id: "6", name: "f", score: 20,  wrongQuestions: [1, 2] },
+  ];
+  const items = itemAnalysis(qs, ss);
+  const byN = (n: number) => items.find((i) => i.number === n)!;
+
+  it("computes 难度 as the proportion correct, so higher means easier", () => {
+    expect(byN(1).difficulty).toBeCloseTo(0.5);  // 3 of 6 correct
+    expect(byN(2).difficulty).toBe(0);           // nobody correct
+  });
+
+  it("gives a perfectly separating question maximum discrimination", () => {
+    expect(byN(1).discrimination).toBe(1);
+    expect(byN(1).quality).toBe("excellent");
+  });
+
+  it("gives a question everyone missed zero discrimination", () => {
+    expect(byN(2).discrimination).toBe(0);
+    expect(byN(2).quality).toBe("poor");
+  });
+
+  it("reports negative discrimination when strong students do worse", () => {
+    expect(byN(3).discrimination).toBeLessThan(0);
+    expect(byN(3).quality).toBe("poor");
+  });
+
+  it("flags items that carry no information or invert", () => {
+    const flagged = flaggedItems(items).map((i) => i.number).sort();
+    expect(flagged).toEqual([2, 3]);
+    expect(flagged).not.toContain(1);
+  });
+
+  it("names the distractor that pulled the most students", () => {
+    const withPicks: Student[] = [
+      { id: "1", name: "a", score: 90, wrongQuestions: [1], chosenOptions: { 1: "B" } },
+      { id: "2", name: "b", score: 80, wrongQuestions: [1], chosenOptions: { 1: "B" } },
+      { id: "3", name: "c", score: 70, wrongQuestions: [1], chosenOptions: { 1: "C" } },
+      { id: "4", name: "d", score: 60, wrongQuestions: [] },
+    ];
+    const top = itemAnalysis(qs, withPicks).find((i) => i.number === 1)!.topDistractor;
+    expect(top).toEqual({ option: "B", count: 2 });
+  });
+
+  it("returns nothing rather than dividing by zero on an empty class", () => {
+    expect(itemAnalysis(qs, [])).toEqual([]);
+  });
+
+  it("falls back to wrong-count ranking when no scores were entered", () => {
+    const noScores = ss.map(({ score, ...rest }) => rest);
+    expect(itemAnalysis(qs, noScores).find((i) => i.number === 1)!.discrimination).toBe(1);
+  });
+});
+
+describe("deriveScores", () => {
+  const qs: Question[] = [
+    { number: 1, text: "", type: "choice", categoryId: "a", confidence: 1, points: 5 },
+    { number: 2, text: "", type: "choice", categoryId: "a", confidence: 1, points: 5 },
+  ];
+
+  it("subtracts the points of missed questions and any subjective loss", () => {
+    const out = deriveScores(qs, [{ id: "1", name: "a", wrongQuestions: [1], subjectiveDeduction: 3 }], 100);
+    expect(out[0].score).toBe(92);
+  });
+
+  it("never overwrites a score the teacher already gave", () => {
+    const out = deriveScores(qs, [{ id: "1", name: "a", wrongQuestions: [1, 2], score: 61 }], 100);
+    expect(out[0].score).toBe(61);
+  });
+
+  it("leaves students untouched when the paper carries no points", () => {
+    const noPoints = qs.map(({ points, ...rest }) => rest);
+    const out = deriveScores(noPoints, [{ id: "1", name: "a", wrongQuestions: [1] }], 100);
+    expect(out[0].score).toBeUndefined();
+  });
+
+  it("floors at zero rather than going negative", () => {
+    const out = deriveScores(qs, [{ id: "1", name: "a", wrongQuestions: [1, 2], subjectiveDeduction: 200 }], 100);
+    expect(out[0].score).toBe(0);
   });
 });

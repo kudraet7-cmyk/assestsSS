@@ -5,6 +5,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { Category, Question, Student, SubjectKey } from "./types";
 import { SUBJECTS } from "./subjects";
+import type { PlanId } from "./plans";
 
 export interface ExamMeta {
   title: string;
@@ -15,6 +16,9 @@ export interface ExamMeta {
 }
 
 interface SessionState {
+  /** Set by the account in production; switchable here so the gating is inspectable. */
+  plan: PlanId;
+  examsThisMonth: number;
   subject: SubjectKey;
   meta: ExamMeta;
   questions: Question[];
@@ -22,6 +26,7 @@ interface SessionState {
   taxonomy: Category[];
   rosterText: string;
 
+  setPlan: (p: PlanId) => void;
   setSubject: (s: SubjectKey) => void;
   setMeta: (m: Partial<ExamMeta>) => void;
   setQuestions: (q: Question[]) => void;
@@ -51,6 +56,8 @@ const idbStorage = createJSONStorage(() => ({
 export const useSession = create<SessionState>()(
   persist(
     (set) => ({
+      plan: "trial",
+      examsThisMonth: 1,
       subject: "english",
       meta: emptyMeta,
       questions: [],
@@ -58,6 +65,7 @@ export const useSession = create<SessionState>()(
       taxonomy: taxonomyFor("english"),
       rosterText: "",
 
+      setPlan: (plan) => set({ plan }),
       setSubject: (subject) => set({ subject, taxonomy: taxonomyFor(subject) }),
       setMeta: (m) => set((s) => ({ meta: { ...s.meta, ...m } })),
       setQuestions: (questions) => set({ questions }),
