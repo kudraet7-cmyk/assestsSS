@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/store";
 import { SUBJECTS } from "@/lib/subjects";
-import { analyse, teachingFocus, itemAnalysis, flaggedItems, deriveScores } from "@/lib/analysis";
+import { analyse, teachingFocus, itemAnalysis, flaggedItems, deriveScores, itemSampleAdequacy } from "@/lib/analysis";
 import { Card, Button, PageHead, Pill, Stat, Note } from "@/components/ui";
 import { HardestQuestions, CategoryRates, Heatmap, RampLegend, Distribution } from "@/components/charts/Charts";
 
@@ -26,6 +26,7 @@ export default function AnalysisPage() {
   const flagged = useMemo(() => flaggedItems(items), [items]);
 
   const cs = analysis.classStats;
+  const adequacy = itemSampleAdequacy(cs.studentCount);
   const catName = (id: string) => taxonomy.find((c) => c.id === id)?.nameZh ?? id;
   const focus = teachingFocus(analysis);
 
@@ -122,13 +123,20 @@ export default function AnalysisPage() {
 
       <div className="mt-3.5">
         <Card title="试题质量 · 难度系数与区分度"
-              right={flagged.length ? `${flagged.length} 题建议复核` : "全部达标"}>
+              right={adequacy.adequate
+                ? (flagged.length ? `${flagged.length} 题建议复核` : "全部达标")
+                : "样本偏少 · 仅供参考"}>
           <p className="mb-3 mt-0 text-[12px] leading-relaxed text-[var(--tx-3)]">
             难度系数 = 答对比例，越高越简单。区分度 = 前 27% 与后 27% 学生的答对率之差，
             衡量这道题能不能把水平不同的学生分开。<b className="text-[var(--tx-2)]">区分度低于 0.2、
             或几乎全对 / 全错的题，出题价值不高</b>；区分度为负通常意味着题干有歧义或答案标错。
             这两个数字全部本地算出，不消耗任何 API。
           </p>
+          {!adequacy.adequate && (
+            <div className="mb-3 rounded-lg border border-[color-mix(in_srgb,var(--warn)_40%,transparent)] bg-[color-mix(in_srgb,var(--warn)_7%,transparent)] px-3.5 py-2.5 text-[12px] leading-relaxed text-[var(--warn)]">
+              {adequacy.note}
+            </div>
+          )}
           <div className="-mx-5 -mb-5 max-h-[300px] overflow-auto">
             <table className="w-full text-[12.5px]">
               <thead>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyse, teachingFocus, median, stdDev, itemAnalysis, flaggedItems, deriveScores } from "./analysis";
+import { analyse, teachingFocus, median, stdDev, itemAnalysis, flaggedItems, deriveScores, itemSampleAdequacy, MIN_ITEM_SAMPLE } from "./analysis";
 import type { Category, Question, Student } from "./types";
 
 const taxonomy: Category[] = [
@@ -203,5 +203,20 @@ describe("deriveScores", () => {
   it("floors at zero rather than going negative", () => {
     const out = deriveScores(qs, [{ id: "1", name: "a", wrongQuestions: [1, 2], subjectiveDeduction: 200 }], 100);
     expect(out[0].score).toBe(0);
+  });
+});
+
+describe("itemSampleAdequacy", () => {
+  it("withholds the verdict below the minimum sample", () => {
+    const a = itemSampleAdequacy(10);
+    expect(a.adequate).toBe(false);
+    expect(a.note).toContain("10");
+    expect(a.note).toContain(String(MIN_ITEM_SAMPLE));
+  });
+
+  it("passes at and above the minimum", () => {
+    expect(itemSampleAdequacy(MIN_ITEM_SAMPLE).adequate).toBe(true);
+    expect(itemSampleAdequacy(45).adequate).toBe(true);
+    expect(itemSampleAdequacy(MIN_ITEM_SAMPLE).note).toBe("");
   });
 });

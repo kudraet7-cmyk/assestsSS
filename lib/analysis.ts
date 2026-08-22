@@ -300,6 +300,31 @@ export function itemAnalysis(questions: Question[], students: Student[]): ItemSt
 }
 
 /**
+ * 区分度 is only meaningful with a real class behind it. Below this many students
+ * the upper/lower groups are two or three people each, and D swings wildly on a
+ * single answer — so the UI reports the numbers but withholds the verdict.
+ */
+export const MIN_ITEM_SAMPLE = 20;
+
+export interface SampleAdequacy {
+  adequate: boolean;
+  studentCount: number;
+  note: string;
+}
+
+export function itemSampleAdequacy(studentCount: number): SampleAdequacy {
+  if (studentCount >= MIN_ITEM_SAMPLE) {
+    return { adequate: true, studentCount, note: "" };
+  }
+  return {
+    adequate: false,
+    studentCount,
+    note: `本次只有 ${studentCount} 名学生，区分度需要约 ${MIN_ITEM_SAMPLE} 人以上才稳定。` +
+          `下面的数字照常算出，但先别据此改题。`,
+  };
+}
+
+/**
  * Questions worth rewriting: everyone got them right or wrong (no information),
  * or strong students did worse than weak ones (negative discrimination, which
  * usually means an ambiguous stem or a wrong key).
